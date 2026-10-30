@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tools</title>
+  <!-- Inline style attributes are used throughout. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:" />
+  <link rel="stylesheet" href="styles/app.css" />
+  <link rel="stylesheet" href="styles/tools.css" />
+</head>
+<body>
+  <div id="shell">
+    <div id="side"><h4>History</h4><div id="history-list"></div></div>
+    <div id="main"><div id="tabs"></div><div id="content"></div></div>
+  </div>
+  <script type="module" src="renderer/tools/main.js"></script>
+</body>
+</html>

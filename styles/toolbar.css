@@ -1,0 +1,58 @@
+/* Session toolbar at the top of index.html (renderer/toolbar/toolbar.js); hidden unless toggled from the top bar. */
+#dev-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 0; background: var(--bar-bg); border-bottom: 1px solid var(--border); padding: 0 8px; font-size: 12px; color: var(--text); min-height: 32px; user-select: none; }
+#dev-toolbar[hidden] { display: none; }
+.dev-toolbar-group { display: flex; align-items: center; gap: 5px; padding: 4px 8px; }
+.dev-toolbar-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); flex-shrink: 0; margin-right: 2px; }
+.dev-toolbar-sep { width: 1px; background: var(--border); align-self: stretch; flex-shrink: 0; }
+#dev-toolbar input[type="text"] { background: var(--input-bg); border: 1px solid var(--border); border-radius: 3px; color: var(--text); padding: 3px 7px; font-size: 12px; height: 22px; box-sizing: border-box; width: 280px; }
+.dev-btn { background: var(--input-bg); border: 1px solid var(--border); border-radius: 3px; color: var(--text); padding: 2px 8px; font-size: 12px; cursor: pointer; height: 22px; line-height: 16px; flex-shrink: 0; }
+.dev-btn:hover { background: var(--hover-bg); }
+.dev-btn:disabled { opacity: 0.5; cursor: default; }
+.dev-toolbar-env-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); padding: 0 2px; }
+#creds-preview { display: flex; align-items: center; gap: 6px; font-family: monospace; font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; margin-left: 4px; }
+#creds-preview span { color: var(--text); }
+#creds-preview .creds-copy { cursor: pointer; padding: 1px 5px; font-size: 12px; background: var(--input-bg); color: var(--text-muted); border: 1px solid var(--border); border-radius: 2px; }
+#creds-preview .creds-copy:hover { color: var(--text); }
+#creds-totp { display: flex; align-items: center; gap: 5px; padding-left: 8px; border-left: 1px solid var(--border); margin-left: 2px; }
+#creds-totp .totp-code { font-family: monospace; font-size: 15px; font-weight: bold; letter-spacing: 0.15em; color: var(--totp); }
+#creds-totp .totp-code.expiring { color: var(--error); }
+#creds-totp .totp-timer { font-size: 12px; color: var(--text-muted); }
+#creds-totp .creds-copy { font-size: 12px; }
+#net-capture-count { color: var(--text-muted); font-family: monospace; }
+/* Collapsible Login section */
+.dev-toolbar-toggle { background: none; border: none; cursor: pointer; padding: 2px 4px; border-radius: 3px; font: inherit; font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); }
+.dev-toolbar-toggle:hover { color: var(--text); background: var(--hover-bg); }
+.dev-toolbar-controls { display: flex; align-items: center; gap: 5px; }
+.dev-toolbar-controls[hidden] { display: none; }
+#login-url-select { background: var(--input-bg); border: 1px solid var(--border); border-radius: 3px; color: var(--text); font-size: 12px; height: 22px; max-width: 220px; }
+/* Network list (Capture → Network): the login window's calls; click one to open it in the app. */
+#net-panel { flex-basis: 100%; border-top: 1px solid var(--border); padding: 4px 8px 6px; }
+#net-panel[hidden] { display: none; }
+.net-panel-head { display: flex; gap: 10px; align-items: center; margin-bottom: 4px; }
+.net-panel-head .hint { color: var(--text-muted); }
+#net-list { max-height: 260px; flex: 1; min-width: 0; overflow-y: auto; font-family: monospace; font-size: 12px; border: 1px solid var(--border); border-radius: 3px; background: var(--input-bg); }
+.net-row { display: grid; grid-template-columns: 16px 36px 58px minmax(0, 1fr) minmax(0, 180px) 56px 60px 64px; gap: 8px; padding: 2px 8px; cursor: pointer; align-items: center; white-space: nowrap; }
+.net-row:nth-child(even) { background: var(--hover-1); }
+.net-row:hover, .net-row:focus { background: var(--active-bg); outline: none; }
+.net-row.opened { background: rgba(76,175,80,0.3); }
+.net-row > span { overflow: hidden; text-overflow: ellipsis; }
+.net-status.ok { color: var(--success); } .net-status.bad { color: var(--error); }
+.net-method { font-weight: 600; }
+.net-host, .net-type, .net-time, .net-size { color: var(--text-muted); }
+.net-time, .net-size { text-align: right; }
+.net-empty { padding: 8px; color: var(--text-muted); font-family: inherit; }
+.net-row .net-tick { margin: 0; cursor: pointer; }
+.net-row.ticked { background: rgba(74,158,255,0.14); }
+/* The detail pane beside the list (one call's request and response). */
+.net-body { display: flex; gap: 8px; align-items: stretch; }
+#net-detail { flex: 1; min-width: 0; max-height: 260px; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 3px; background: var(--panel-bg); font-size: 12px; user-select: text; }
+#net-detail[hidden] { display: none; }
+.net-detail-head { display: flex; gap: 8px; align-items: center; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.net-detail-url { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace; }
+.net-detail-body { overflow: auto; padding: 4px 8px; }
+.net-detail-body summary { cursor: pointer; color: var(--text-muted); margin: 4px 0 2px; }
+.net-kv { border-collapse: collapse; font-family: monospace; font-size: 12px; width: 100%; }
+.net-kv td { padding: 1px 6px 1px 0; vertical-align: top; word-break: break-all; } .net-kv td:first-child { color: var(--text-muted); white-space: nowrap; width: 1%; }
+.net-pre { margin: 0; font-size: 12px; white-space: pre-wrap; word-break: break-all; background: var(--input-bg); padding: 4px 6px; border-radius: 3px; }
+.net-none { color: var(--text-muted); font-style: italic; }
+.net-row.focused { outline: 1px solid var(--accent); outline-offset: -1px; }

@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Notes</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:" />
+  <link rel="stylesheet" href="styles/app.css" />
+</head>
+<body class="notes-window">
+  <div class="notes-window-head">
+    <h3>Notes</h3><span class="hint" id="notes-window-project"></span>
+    <button class="btn-ghost small" data-action="notes-dock" title="Close this window and show Notes in the main window's side panel">Dock to main window</button>
+  </div>
+  <div id="notes-root" class="notes-window-body"><p class="hint pad-10">Loading notes…</p></div>
+  <div id="notes-menu" class="menu notes-insert-menu" role="menu" hidden></div>
+  <script type="module" src="renderer/notes/main.js"></script>
+</body>
+</html>

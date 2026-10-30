@@ -1,0 +1,957 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "api-client.schema.json",
+  "title": "API Workbench project setup (api-client.json)",
+  "description": "Put this file in a project's code folder. The app offers to apply it when the project's code folder contains it (or use Import → api-client.json). Applying merges by name; nothing missing from the file is deleted. Every feature with saved settings can be set up here. See docs/CONFIGURING.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "const": 1,
+      "description": "Format version. Always 1."
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Project-level settings. The project is matched by name (or is the one selected when applying).",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "auth": {
+          "$ref": "#/$defs/auth",
+          "description": "Inherited by folders and requests whose auth is \"inherit\"."
+        },
+        "correlation": {
+          "type": "boolean",
+          "description": "Add X-Request-Id and traceparent headers to every send (default true)."
+        },
+        "traceUrl": {
+          "type": "string",
+          "description": "Trace viewer link with {traceId}, e.g. http://localhost:16686/trace/{traceId}"
+        },
+        "cookies": {
+          "type": "string",
+          "description": "Cookie jar sent with every request, \"a=1; b=2\"."
+        },
+        "scripts": {
+          "$ref": "#/$defs/scripts",
+          "description": "Run before / after every request's own scripts."
+        },
+        "repoDir": {
+          "type": "string",
+          "description": "Folder (inside the code folder) for requests saved as files. Default api-requests."
+        },
+        "repoSync": {
+          "type": "boolean",
+          "description": "Keep request files in sync automatically."
+        },
+        "actuatorBase": {
+          "type": "string",
+          "description": "Spring Boot Actuator base URL for Project → Spring Boot Actuator, e.g. {{baseUrl}}/actuator or http://localhost:8081/manage."
+        },
+        "logWatch": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Log watch (Tasks & logs → Flagged): which incoming log lines are flagged.",
+          "properties": {
+            "levels": {
+              "type": "boolean",
+              "description": "Flag ERROR / FATAL lines (default true)."
+            },
+            "patterns": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ],
+              "description": "Extra text or /regex/flags patterns, e.g. [\"Timeout\", \"/payment .* failed/i\"]."
+            },
+            "notify": {
+              "type": "boolean",
+              "description": "Show a notification for flagged lines (default true)."
+            }
+          }
+        }
+      }
+    },
+    "tokenSources": {
+      "type": "array",
+      "description": "Token sources (Project → Token sources): requests that fetch an access token, used by auth { \"type\": \"token\", \"source\": \"<name>\" }. Global to the app; matched by name. Use {{variables}} for client secrets and passwords.",
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "method": {
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "PATCH"
+            ]
+          },
+          "url": {
+            "type": "string"
+          },
+          "headers": {
+            "$ref": "#/$defs/pairs"
+          },
+          "json": {
+            "description": "A JSON body."
+          },
+          "body": {
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "A raw body, e.g. grant_type=client_credentials&client_id={{clientId}}&client_secret={{clientSecret}}"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "type": {
+                    "enum": [
+                      "raw",
+                      "json",
+                      "form"
+                    ]
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "fields": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "tokenPath": {
+            "type": "string",
+            "description": "Where the token is in the response (default access_token), e.g. data.token"
+          }
+        }
+      }
+    },
+    "environments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Make this the active environment."
+          },
+          "variables": {
+            "type": "object",
+            "description": "name → value. Use { \"secret\": true } for values each person enters themselves (tokens, passwords); never put real secrets in this file. { \"value\": …, \"enabled\": false } keeps a variable switched off.",
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "value": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean"
+                      ]
+                    },
+                    "secret": {
+                      "type": "boolean"
+                    },
+                    "enabled": {
+                      "type": "boolean",
+                      "description": "false keeps the variable but turns it off."
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "loginUrls": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "label → login page URL (Session toolbar)."
+          },
+          "network": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "TLS / proxy settings. File paths may be relative to the code folder. A certificate passphrase is entered in the app (Environments), never here.",
+            "properties": {
+              "caFile": {
+                "type": "string"
+              },
+              "insecure": {
+                "type": "boolean"
+              },
+              "certFile": {
+                "type": "string"
+              },
+              "keyFile": {
+                "type": "string"
+              },
+              "pfxFile": {
+                "type": "string"
+              },
+              "proxy": {
+                "type": "string",
+                "description": "http://[user:pass@]host:port"
+              },
+              "http2": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    },
+    "folders": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "auth": {
+            "$ref": "#/$defs/auth"
+          },
+          "requests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/request"
+            }
+          }
+        }
+      }
+    },
+    "requests": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/request"
+      },
+      "description": "Requests at the project root."
+    },
+    "features": {
+      "type": "array",
+      "description": "Feature groups (sidebar → Current). Requests are referenced as \"Folder/Request name\" or \"Request name\".",
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "done": {
+            "type": "boolean"
+          },
+          "requests": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "specs": {
+      "type": "array",
+      "description": "OpenAPI / Swagger documents to attach: paths relative to the code folder, or http(s) URLs (e.g. a running app's /v3/api-docs).",
+      "items": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "location"
+            ],
+            "properties": {
+              "location": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "description": "Local services to start from Tasks & logs.",
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string",
+            "description": "e.g. ./mvnw spring-boot:run, ./gradlew bootRun, java -jar target/app.jar"
+          },
+          "cwd": {
+            "type": "string",
+            "description": "Working folder, relative to the code folder."
+          },
+          "javaHome": {
+            "type": "string"
+          },
+          "profile": {
+            "type": "string",
+            "description": "Spring profile(s)."
+          },
+          "jvmOpts": {
+            "type": "string"
+          },
+          "env": {
+            "$ref": "#/$defs/pairs",
+            "description": "Environment variables for the task."
+          },
+          "readyLog": {
+            "type": "string",
+            "description": "Regex; the task is ready when a log line matches (e.g. Started .*Application)."
+          },
+          "readyUrl": {
+            "type": "string",
+            "description": "Health URL; ready when it answers < 400."
+          },
+          "waitForReady": {
+            "type": "boolean",
+            "description": "Hold sends until the task is ready (default true)."
+          }
+        }
+      }
+    },
+    "logSources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "file",
+              "command",
+              "ssh",
+              "kubernetes",
+              "docker"
+            ],
+            "description": "file: a log file on this computer; command: any command's output; ssh: files on a server; kubernetes: a deployment, pod or label selector; docker: a container. Default file."
+          },
+          "path": {
+            "type": "string",
+            "description": "type file: the log file (* patterns and .gz allowed), relative to the code folder."
+          },
+          "command": {
+            "type": "string",
+            "description": "type command: the command whose output is the log, e.g. tail -F /var/log/app.log"
+          },
+          "ssh": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "type ssh: uses your ssh keys, agent and ~/.ssh/config; never a password.",
+            "properties": {
+              "host": {
+                "type": "string"
+              },
+              "user": {
+                "type": "string"
+              },
+              "port": {
+                "type": [
+                  "string",
+                  "integer"
+                ]
+              },
+              "identityFile": {
+                "type": "string",
+                "description": "e.g. ~/.ssh/id_ed25519"
+              },
+              "paths": {
+                "type": "string",
+                "description": "Remote log files, comma separated; * patterns and rotated .gz files are searched too, e.g. /var/log/app/*.log"
+              }
+            }
+          },
+          "kubernetes": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "type kubernetes (kubectl).",
+            "properties": {
+              "context": {
+                "type": "string"
+              },
+              "namespace": {
+                "type": "string"
+              },
+              "target": {
+                "type": "string",
+                "description": "deployment/name or pod/name"
+              },
+              "selector": {
+                "type": "string",
+                "description": "Label selector, e.g. app=orders (instead of target)"
+              },
+              "container": {
+                "type": "string"
+              }
+            }
+          },
+          "docker": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "type docker.",
+            "properties": {
+              "container": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "notes": {
+      "type": "array",
+      "description": "Markdown notes (side panel → Notes), matched by title. Project notes unless global.",
+      "items": {
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string",
+            "description": "Markdown."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "global": {
+            "type": "boolean",
+            "description": "A note not tied to this project."
+          }
+        }
+      }
+    },
+    "accounts": {
+      "type": "array",
+      "description": "Session toolbar test accounts (Creds), matched by label + environment. Passwords and TOTP secrets are entered in the app, never here.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "user": {
+            "type": "string"
+          },
+          "env": {
+            "type": "string",
+            "description": "Environment name the account belongs to (empty: every environment)."
+          }
+        }
+      }
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "App-wide settings. AI assistance and letting other devices use the proxy are switched on in the app only.",
+      "properties": {
+        "theme": {
+          "enum": [
+            "system",
+            "dark",
+            "light"
+          ]
+        },
+        "zoom": {
+          "type": "number",
+          "minimum": 0.7,
+          "maximum": 1.6
+        },
+        "editorWrap": {
+          "type": "boolean",
+          "description": "Wrap long lines in code editors."
+        },
+        "layout": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "split": {
+              "enum": [
+                "row",
+                "column"
+              ],
+              "description": "row: request and response side by side; column: stacked."
+            },
+            "sideOpen": {
+              "type": "boolean",
+              "description": "Show the side panel (Spec / Git / Notes / Tools)."
+            },
+            "session": {
+              "type": "boolean",
+              "description": "Show the Session toolbar."
+            }
+          }
+        },
+        "otel": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "The local OpenTelemetry receiver.",
+          "properties": {
+            "autoStart": {
+              "type": "boolean"
+            },
+            "httpPort": {
+              "type": "integer"
+            },
+            "grpcPort": {
+              "type": "integer"
+            }
+          }
+        },
+        "proxy": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "The intercepting proxy.",
+          "properties": {
+            "port": {
+              "type": "integer"
+            },
+            "decryptHttps": {
+              "type": "boolean"
+            },
+            "insecureUpstream": {
+              "type": "boolean",
+              "description": "Don't verify upstream certificates."
+            },
+            "toHistory": {
+              "type": "boolean",
+              "description": "Add captured exchanges to History."
+            },
+            "breakpoints": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ],
+              "description": "URL fragments or METHOD + fragment that pause matching requests."
+            }
+          }
+        },
+        "aiPrompt": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "What “Why did this fail?” / “Investigate” prompts include (Settings → Privacy). Each section defaults to true.",
+          "properties": {
+            "request": {
+              "type": "boolean"
+            },
+            "requestBody": {
+              "type": "boolean"
+            },
+            "response": {
+              "type": "boolean"
+            },
+            "responseBody": {
+              "type": "boolean"
+            },
+            "spec": {
+              "type": "boolean"
+            },
+            "warnings": {
+              "type": "boolean"
+            },
+            "timing": {
+              "type": "boolean"
+            },
+            "logs": {
+              "type": "boolean"
+            },
+            "lastGood": {
+              "type": "boolean"
+            },
+            "commits": {
+              "type": "boolean"
+            },
+            "commitAuthors": {
+              "type": "boolean"
+            },
+            "page": {
+              "type": "boolean"
+            },
+            "console": {
+              "type": "boolean"
+            },
+            "network": {
+              "type": "boolean"
+            },
+            "networkBodies": {
+              "type": "boolean"
+            },
+            "instructions": {
+              "type": "string",
+              "description": "Extra instructions added to every prompt."
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "auth": {
+      "oneOf": [
+        {
+          "enum": [
+            "inherit",
+            "none"
+          ]
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "enum": [
+                "inherit",
+                "none",
+                "bearer",
+                "basic",
+                "token"
+              ]
+            },
+            "token": {
+              "type": "string",
+              "description": "bearer: use a {{variable}}, not a literal token."
+            },
+            "user": {
+              "type": "string"
+            },
+            "pass": {
+              "type": "string",
+              "description": "basic: use a {{variable}}."
+            },
+            "source": {
+              "type": "string",
+              "description": "token: the name of a token source (Project → Token sources)."
+            }
+          }
+        }
+      ]
+    },
+    "scripts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pre": {
+          "type": "string"
+        },
+        "post": {
+          "type": "string"
+        }
+      }
+    },
+    "request": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Unique within its folder; used to match on re-apply."
+        },
+        "kind": {
+          "enum": [
+            "http",
+            "ws",
+            "sse",
+            "graphql",
+            "grpc"
+          ],
+          "description": "Default http."
+        },
+        "method": {
+          "enum": [
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE",
+            "HEAD",
+            "OPTIONS"
+          ]
+        },
+        "url": {
+          "type": "string",
+          "description": "May use {{variables}}, e.g. {{baseUrl}}/pets/{{petId}}. gRPC: grpc://host:port or grpcs://host:port."
+        },
+        "query": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          },
+          "description": "Appended to the URL's query string."
+        },
+        "headers": {
+          "$ref": "#/$defs/pairs"
+        },
+        "json": {
+          "description": "A JSON body (any JSON value)."
+        },
+        "body": {
+          "oneOf": [
+            {
+              "type": "string",
+              "description": "A raw body; set Content-Type in headers."
+            },
+            {
+              "type": "object",
+              "required": [
+                "type"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "none",
+                    "raw",
+                    "json",
+                    "form"
+                  ]
+                },
+                "text": {
+                  "type": "string"
+                },
+                "fields": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "auth": {
+          "$ref": "#/$defs/auth"
+        },
+        "assertions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "JS expressions over status and body, e.g. \"status === 200\", \"body.items.length > 0\"."
+        },
+        "extract": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "response path → target. Path: data.token, items.0.id or header.x-token. Target: \"bearer\" or a variable name."
+        },
+        "scripts": {
+          "$ref": "#/$defs/scripts"
+        },
+        "timeoutSec": {
+          "type": "number",
+          "minimum": 0
+        },
+        "followRedirects": {
+          "type": "boolean"
+        },
+        "graphql": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "query": {
+              "type": "string"
+            },
+            "variables": {}
+          }
+        },
+        "ws": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "message": {}
+          }
+        },
+        "grpc": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "proto": {
+              "type": "string",
+              "description": ".proto file, relative to the code folder."
+            },
+            "includeDirs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "service": {
+              "type": "string",
+              "description": "Fully qualified, e.g. pets.v1.PetService"
+            },
+            "method": {
+              "type": "string"
+            },
+            "message": {
+              "description": "Request message as JSON (an array for client streaming)."
+            }
+          }
+        },
+        "operation": {
+          "type": "string",
+          "description": "Link to a spec operation for validation and docs: \"METHOD /path\" as in the spec (e.g. \"GET /pets/{petId}\") or an operationId. Resolved against the project's attached specs after applying."
+        },
+        "snapshot": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Snapshot test: the expected response. Later responses are compared field by field.",
+          "properties": {
+            "status": {
+              "type": "integer",
+              "description": "Expected status (default 200)."
+            },
+            "json": {
+              "description": "Expected JSON body."
+            },
+            "body": {
+              "type": "string",
+              "description": "Expected body as text (use json for JSON)."
+            },
+            "ignore": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Fields to ignore: a name (createdAt) or a path ($.items[*].id, $..traceId)."
+            }
+          }
+        }
+      }
+    },
+    "pairs": {
+      "type": "object",
+      "description": "name → value, or { \"value\": …, \"enabled\": false } for an entry that is kept but switched off.",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "value"
+            ],
+            "properties": {
+              "value": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean"
+                ]
+              },
+              "enabled": {
+                "type": "boolean"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

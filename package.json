@@ -1,0 +1,28 @@
+{
+  "name": "api-workbench",
+  "version": "1.0.0",
+  "description": "API Workbench: a desktop (Electron) app for building, sending and debugging API requests. Fetches run from the Node main process instead of a browser context, so requests carry no Origin/Sec-Fetch-* headers.",
+  "private": true,
+  "main": "main.js",
+  "bin": {
+    "api-workbench": "bin/api-workbench.js",
+    "api-workbench-mcp": "bin/api-workbench-mcp.js"
+  },
+  "scripts": {
+    "start": "electron .",
+    "start:mcp": "electron . --mcp",
+    "test": "node --test \"test/*.test.mjs\"",
+    "cli": "node bin/api-workbench.js"
+  },
+  "devDependencies": {
+    "electron": "^45.1.0"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.14.6",
+    "@grpc/proto-loader": "^0.7.15",
+    "js-yaml": "^4.1.0",
+    "node-forge": "^1.4.2",
+    "protobufjs": "^7.6.6",
+    "ws": "^8.22.0"
+  }
+}

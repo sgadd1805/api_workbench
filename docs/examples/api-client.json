@@ -1,0 +1,131 @@
+{
+  "version": 1,
+  "project": {
+    "name": "Pet Store",
+    "auth": { "type": "bearer", "token": "{{token}}" },
+    "correlation": true,
+    "traceUrl": "http://localhost:16686/trace/{traceId}",
+    "scripts": { "pre": "request.headers['X-Client'] = 'api-workbench';" },
+    "repoDir": "api-requests",
+    "repoSync": false,
+    "actuatorBase": "http://localhost:8080/actuator",
+    "logWatch": { "levels": true, "patterns": ["Timeout", "/payment .* failed/i"], "notify": true }
+  },
+  "tokenSources": [
+    {
+      "name": "Pet Store client credentials",
+      "method": "POST",
+      "url": "{{authUrl}}/oauth/token",
+      "body": { "type": "form", "fields": { "grant_type": "client_credentials", "client_id": "{{clientId}}", "client_secret": "{{clientSecret}}" } },
+      "tokenPath": "access_token"
+    }
+  ],
+  "environments": [
+    {
+      "name": "local",
+      "active": true,
+      "variables": { "baseUrl": "http://localhost:8080/api/v1", "petId": "1", "token": { "secret": true } },
+      "loginUrls": { "Local login": "http://localhost:8080/login" }
+    },
+    {
+      "name": "staging",
+      "variables": {
+        "baseUrl": "https://staging.example.com/api/v1",
+        "petId": "1",
+        "token": { "secret": true },
+        "authUrl": "https://auth.staging.example.com",
+        "clientId": "pet-store-tests",
+        "clientSecret": { "secret": true },
+        "debug": { "value": "true", "enabled": false }
+      },
+      "network": { "caFile": "certs/staging-ca.pem", "http2": false }
+    }
+  ],
+  "folders": [
+    {
+      "name": "Auth",
+      "auth": "none",
+      "requests": [
+        {
+          "name": "Log in",
+          "method": "POST",
+          "url": "{{baseUrl}}/auth/login",
+          "json": { "username": "{{username}}", "password": "{{password}}" },
+          "assertions": ["status === 200"],
+          "extract": { "access_token": "token" }
+        }
+      ]
+    },
+    {
+      "name": "Pets",
+      "requests": [
+        { "name": "List pets", "url": "{{baseUrl}}/pets", "query": { "limit": 20 }, "operation": "GET /pets", "assertions": ["status === 200", "Array.isArray(body)"] },
+        {
+          "name": "Get pet",
+          "url": "{{baseUrl}}/pets/{{petId}}",
+          "operation": "getPetById",
+          "assertions": ["status === 200", "body.id !== undefined"],
+          "snapshot": { "status": 200, "json": { "id": 1, "name": "Rex", "tag": "dog", "updatedAt": "2026-01-01T00:00:00Z" }, "ignore": ["updatedAt"] }
+        },
+        {
+          "name": "Create pet",
+          "method": "POST",
+          "url": "{{baseUrl}}/pets",
+          "headers": { "Idempotency-Key": "{{$uuid}}", "X-Debug": { "value": "1", "enabled": false } },
+          "json": { "name": "Rex", "tag": "dog" },
+          "assertions": ["status === 201"],
+          "extract": { "id": "petId" },
+          "scripts": { "post": "test('has an id', () => expect(typeof response.json().id).toBe('number'));" },
+          "timeoutSec": 10
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "auth": { "type": "token", "source": "Pet Store client credentials" },
+      "requests": [
+        { "name": "Pet stats", "url": "{{baseUrl}}/admin/stats", "assertions": ["status === 200"] }
+      ]
+    },
+    {
+      "name": "Other protocols",
+      "requests": [
+        { "name": "Pets (GraphQL)", "kind": "graphql", "url": "{{baseUrl}}/graphql", "graphql": { "query": "query Pets($limit: Int) { pets(limit: $limit) { id name } }", "variables": { "limit": 5 } } },
+        { "name": "Get pet (gRPC)", "kind": "grpc", "url": "grpc://localhost:9090", "grpc": { "proto": "src/main/proto/pets.proto", "includeDirs": ["src/main/proto"], "service": "pets.v1.PetService", "method": "GetPet", "message": { "id": 1 } } },
+        { "name": "Pet updates (WebSocket)", "kind": "ws", "url": "ws://localhost:8080/ws/pets", "ws": { "message": { "subscribe": "pets" } } },
+        { "name": "Pet events (SSE)", "kind": "sse", "url": "{{baseUrl}}/pets/events" }
+      ]
+    }
+  ],
+  "features": [
+    { "name": "PET-123 adoption flow", "branch": "feature/PET-123-adoption", "notes": "Create → get → list", "requests": ["Auth/Log in", "Pets/Create pet", "Pets/Get pet"] }
+  ],
+  "specs": ["src/main/resources/openapi.yaml"],
+  "tasks": [
+    {
+      "name": "pet-service",
+      "command": "./mvnw spring-boot:run",
+      "profile": "local",
+      "env": { "SERVER_PORT": "8080" },
+      "readyLog": "Started .*Application",
+      "readyUrl": "http://localhost:8080/actuator/health"
+    }
+  ],
+  "logSources": [
+    { "name": "app log", "type": "file", "path": "logs/application.log" },
+    { "name": "staging servers", "type": "ssh", "ssh": { "host": "app-1.staging.example.com", "user": "deploy", "paths": "/var/log/pet-store/*.log" } },
+    { "name": "staging pods", "type": "kubernetes", "kubernetes": { "context": "staging", "namespace": "pets", "selector": "app=pet-store" } },
+    { "name": "local container", "type": "docker", "docker": { "container": "pet-store-db" } }
+  ],
+  "notes": [
+    { "title": "Pet Store: running locally", "body": "Start **pet-service** in Tasks & logs, then run *Auth/Log in*.", "tags": ["setup"] }
+  ],
+  "accounts": [
+    { "label": "Admin", "user": "admin@example.com", "env": "local" }
+  ],
+  "settings": {
+    "layout": { "split": "row", "sideOpen": true },
+    "otel": { "autoStart": true },
+    "aiPrompt": { "commitAuthors": false }
+  }
+}

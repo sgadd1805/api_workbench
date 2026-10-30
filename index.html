@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>API Workbench</title>
+  <!-- 'unsafe-eval': assertions are user JS expressions (renderer/app/assertions.js). Inline style attributes are used throughout. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval'; worker-src blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data:" />
+  <link rel="stylesheet" href="styles/app.css" />
+  <link rel="stylesheet" href="styles/toolbar.css" />
+</head>
+<body class="main-page">
+  <!-- Session toolbar: Login | Creds | Capture (renderer/toolbar/toolbar.js); shown with the top bar's Session button -->
+  <div id="dev-toolbar" hidden>
+    <div class="dev-toolbar-group">
+      <button class="dev-toolbar-label dev-toolbar-toggle" id="login-toggle" aria-expanded="false" aria-controls="login-controls" title="Show the login controls">Login ▸</button>
+      <span id="login-controls" class="dev-toolbar-controls" hidden>
+        <select id="login-url-select" title="Login URLs of the active environment (Environments page)"></select>
+        <input type="text" id="login-url-input" placeholder="https://… login URL" hidden />
+        <button class="dev-btn" id="open-login-btn">Open</button>
+        <button class="dev-btn" id="hide-login-btn">Hide</button>
+        <button class="dev-btn" id="use-session-btn" title="Copy the login window's cookies and bearer token into the current project">Use session</button>
+        <button class="dev-btn" id="investigate-btn">Investigate</button>
+      </span>
+    </div>
+    <div class="dev-toolbar-sep"></div>
+    <div class="dev-toolbar-group" style="flex-wrap:wrap">
+      <span class="dev-toolbar-label">Creds</span>
+      <!-- Filled from the saved test accounts (renderer/toolbar/toolbar.js) -->
+      <span id="creds-buttons"></span>
+      <button class="dev-btn" id="creds-edit" title="Add or edit test accounts">Edit</button>
+      <div id="creds-preview"></div>
+    </div>
+    <div class="dev-toolbar-sep"></div>
+    <!-- Capture section -->
+    <div class="dev-toolbar-group">
+      <span class="dev-toolbar-label">Capture</span>
+      <button class="dev-btn" id="net-list-toggle" aria-expanded="false" aria-controls="net-panel" title="List the login window's calls; click one to open it in the app">Network ▸ <span id="net-capture-count">0</span></button>
+      <button class="dev-btn" id="net-capture-import" title="Save captured calls as requests in the current project">→ Requests</button>
+      <button class="dev-btn" id="net-capture-har" title="Add the calls from a .har file saved in a browser's DevTools (Network tab → Export / Save all as HAR)">Import HAR…</button>
+      <button class="dev-btn" id="net-capture-download">Download HAR</button>
+      <button class="dev-btn" id="net-capture-clear">Clear</button>
+    </div>
+    <!-- The captured calls (renderer/toolbar/toolbar.js); clicking one opens it in the app -->
+    <div id="net-panel" hidden>
+      <div class="net-panel-head"><input type="text" id="net-filter" placeholder="Filter: URL, method or status…" spellcheck="false" autocomplete="off" />
+        <button class="dev-btn" id="net-select-all" title="Tick every call the filter shows">Select all</button>
+        <button class="dev-btn" id="net-save-flow" disabled title="Save the ticked calls, in order, as a folder that replays: tokens, ids and CSRF values passed between them become linked variables">Save as flow</button>
+        <span class="hint" id="net-panel-hint">Click a call to see it; double-click (or Enter) opens it in the app. Tick calls (Shift for a range) to save them as a flow.</span></div>
+      <div class="net-body"><div id="net-list" role="list"></div><div id="net-detail" hidden></div></div>
+    </div>
+  </div>
+
+  <div id="app">
+    <div id="topbar" class="topbar"></div>
+    <div class="main">
+      <div class="sidebar" id="sidebar">
+        <div class="sidebar-header sidebar-modes">
+          <button class="sidebar-mode" data-action="sidebar-mode" data-mode="projects">Projects</button>
+          <button class="sidebar-mode" data-action="sidebar-mode" data-mode="current" title="Requests you're working on, grouped by feature">Current</button>
+          <button class="sidebar-mode" data-action="sidebar-mode" data-mode="history">History</button>
+        </div>
+        <div id="projects-pane" class="sidebar-pane">
+          <div class="sidebar-new-project">
+            <input type="text" id="new-project-input" placeholder="New project…" />
+            <button class="btn-primary small" data-action="new-project">+</button>
+          </div>
+          <div id="sidebar-list" class="sidebar-list"></div>
+        </div>
+        <!-- renderer/app/views/current.js -->
+        <div id="current-pane" class="sidebar-pane" style="display:none">
+          <div class="sidebar-new-project">
+            <input type="text" id="new-feature-input" placeholder="New feature…" />
+            <button class="btn-primary small" data-action="new-feature" title="Add a feature group">+</button>
+          </div>
+          <div id="current-list" class="sidebar-list"></div>
+        </div>
+        <!-- renderer/app/views/history.js -->
+        <div id="history-pane" class="sidebar-pane" style="display:none">
+          <div class="sidebar-new-project"><input type="text" id="history-search" placeholder="Search: method, URL, status…" spellcheck="false" /></div>
+          <div id="history-list" class="sidebar-list"></div>
+          <div class="history-footer"><span id="history-count" class="hint"></span><button class="btn-ghost small" data-action="history-clear">Clear history</button></div>
+        </div>
+      </div>
+      <div class="sidebar-resize-handle" id="sidebar-resize"></div>
+      <div class="content">
+        <div id="welcome" class="welcome">
+          <h2>API Workbench</h2>
+          <p>Create or select a project to get started.</p>
+        </div>
+        <div id="tab-bar" class="tab-bar" style="display:none"></div>
+        <!-- Request and response, side by side or stacked (renderer/app/views/layout.js) -->
+        <div id="workspace" class="workspace" style="display:none">
+          <div id="request-panel" class="request-panel"></div>
+          <div id="split-handle" class="split-handle" title="Drag to resize · double-click to switch side-by-side / stacked"></div>
+          <div id="response-panel" class="response-panel"></div>
+        </div>
+        <div id="compare-layout"></div>
+        <div id="page-panel" class="page-panel" style="display:none"></div>
+      </div>
+      <div id="side-resize" class="side-resize-handle" style="display:none"></div>
+      <!-- Right-hand panel: Spec / Git / Notes / Tools (renderer/app/views/layout.js) -->
+      <aside id="side-panel" class="side-panel" style="display:none">
+        <div id="side-head" class="side-head"></div>
+        <div id="side-spec" class="side-body"></div>
+        <div id="side-git" class="side-body"></div>
+        <div id="side-notes" class="side-body side-notes"></div>
+        <div id="side-tools" class="side-body side-tools"></div>
+      </aside>
+    </div>
+    <div id="terminal-panel" class="terminal-panel" style="display:none"></div>
+    <div id="status-bar" class="status-bar"></div>
+  </div>
+  <div id="modal-root"></div>
+  <div id="search-root"></div>
+  <div id="menu-root"></div>
+  <script type="module" src="renderer/toolbar/toolbar.js"></script>
+  <script type="module" src="renderer/app/main.js"></script>
+</body>
+</html>
