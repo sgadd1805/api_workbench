@@ -608,6 +608,9 @@ button .icon + * { margin-left: 2px; }
 .row { display: flex; } .gap-6 { gap: 6px; } .gap-10 { gap: 10px; } .gap-14 { gap: 14px; } .wrap { flex-wrap: wrap; } .items-center { align-items: center; } .items-start { align-items: flex-start; }
 .col { display: flex; flex-direction: column; } .block { display: block; }
 .config-issues { margin: 6px 0 0 18px; font-size: 12px; }
+.config-changes { margin: 6px 0 0 18px; font-size: 12px; max-height: 50vh; overflow: auto; }
+.config-changes li { margin-bottom: 8px; }
+.config-changes pre { margin: 2px 0; padding: 4px 6px; max-height: 160px; overflow: auto; white-space: pre-wrap; word-break: break-all; background: var(--active-bg); border-radius: 4px; }
 /* Notes tags (shared/notesview.js) and the popped-out Notes window (notes.html). */
 .note-tags { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px; }
 .note-tag { font-size: 12px; padding: 0 6px; border-radius: 8px; background: var(--active-bg); color: var(--accent); }

@@ -1,5 +1,6 @@
 // A single form dialog.
 // spec: { title, ok?, hint?, html? (trusted markup from our own code), wide?, fields: [Field], onOk(values),
+//         cancel? (show Cancel even without fields),
 //         danger?: { label, run() } (a red button on the left, e.g. Delete; closes the dialog first) };
 // values are keyed by field key.
 // Field: { key, label, value?, type?: 'text' | 'password' | 'textarea' | 'select' | 'checklist', options? }
@@ -39,7 +40,7 @@ export function renderModal() {
   root.innerHTML = `<div class="overlay"><div class="modal${m.wide ? ' wide' : ''}"><h3>${esc(m.title)}</h3>
     ${m.hint ? `<p class="mb-8 hint">${esc(m.hint)}</p>` : ''}${m.html || ''}
     ${m.fields.map((f) => `<div class="field"><label class="hint">${esc(f.label)}</label>${fieldHtml(f)}</div>`).join('')}
-    <div class="modal-actions">${m.danger ? `<button class="btn-ghost danger-text" data-action="modal-danger" style="margin-right:auto">${esc(m.danger.label)}</button>` : ''}${m.fields.length ? '<button class="btn-ghost" data-action="modal-cancel">Cancel</button>' : ''}
+    <div class="modal-actions">${m.danger ? `<button class="btn-ghost danger-text" data-action="modal-danger" style="margin-right:auto">${esc(m.danger.label)}</button>` : ''}${m.fields.length || m.cancel ? '<button class="btn-ghost" data-action="modal-cancel">Cancel</button>' : ''}
     <button class="btn-primary" data-action="modal-ok">${esc(m.ok || 'OK')}</button></div></div></div>`;
   (root.querySelector('input,textarea,select') || root.querySelector('[data-action=modal-ok]'))?.focus();
 }

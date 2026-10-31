@@ -229,6 +229,56 @@ export function applyConfig(cfg, { project: target = null, codeFolder = '', adop
   return { project: p, created, summary, specs, links, accounts, settings: !!cfg.settings, warnings };
 }
 
+// What applying cfg would change that runs code on this computer or weakens TLS: task and log-source
+// commands, scripts, certificate checks, CAs and proxies. Applying replaces these on entries matched by
+// name, so the caller shows them before a file from the code folder (a git pull, a teammate's PR) is applied.
+// Same options as applyConfig; nothing is changed. → [{ what, name, field, before, after }] ('' = not set)
+export function riskyChanges(cfg, { project: target = null, codeFolder = '', adoptCodeFolder = true } = {}) {
+  if (!cfg || typeof cfg !== 'object') return [];
+  const out = [];
+  const pc = cfg.project || {};
+  const p = target || (pc.name && DB.projects.find((x) => x.name === pc.name)) || null;
+  const pName = p?.name || pc.name || 'New project';
+  const base = adoptCodeFolder ? p?.codeFolder || codeFolder : codeFolder || p?.codeFolder;
+  const text = (v) => (v === undefined || v === null ? '' : typeof v === 'string' ? v : JSON.stringify(v));
+  const diff = (what, name, field, before, after) => { if (after !== undefined && text(after) !== text(before)) out.push({ what, name, field, before: text(before), after: text(after) }); };
+  const flag = (what, name, field, before, after) => { if (after !== undefined && !!after !== !!before) out.push({ what, name, field, before: String(!!before), after: String(!!after) }); };
+  const scripts = (what, name, old, c) => { if (c) for (const k of ['pre', 'post']) diff(what, name, `${k}-script`, old?.[k] || '', c[k] || ''); };
+  const envText = (list) => (list || []).filter((x) => x.k).map((x) => `${x.k}=${x.v}${x.on === false ? ' (off)' : ''}`).join('\n');
+
+  scripts('Project', pName, p?.scripts, pc.scripts);
+  const requests = (list, f, label) => {
+    for (const c of list || []) if (c.name) scripts('Request', label ? `${label}/${c.name}` : c.name, (f || (label ? null : p))?.requests.find((x) => x.name === c.name)?.scripts, c.scripts);
+  };
+  for (const fc of cfg.folders || []) if (fc.name) requests(fc.requests, p?.folders.find((x) => x.name === fc.name), fc.name);
+  requests(cfg.requests, null, '');
+
+  for (const e of cfg.environments || []) {
+    if (!e.name || !e.network) continue;
+    const old = { ...NETWORK_DEFAULTS, ...p?.envs.find((x) => x.name === e.name)?.network };
+    flag('Environment', e.name, 'ignore certificate errors', old.insecure, e.network.insecure);
+    diff('Environment', e.name, 'proxy', old.proxy, e.network.proxy);
+    diff('Environment', e.name, 'CA file', old.caFile, e.network.caFile && join(base, e.network.caFile));
+  }
+  for (const tc of cfg.tasks || []) {
+    if (!tc.name) continue;
+    const t = p?.tasks.find((x) => x.name === tc.name);
+    for (const k of ['command', 'cwd', 'javaHome', 'jvmOpts']) diff('Task', tc.name, k, t?.[k], tc[k]);
+    if (tc.env) diff('Task', tc.name, 'env', envText(t?.env), envText(rows(tc.env)));
+  }
+  for (const lc of cfg.logSources || []) {
+    if (!lc.name) continue;
+    const s = p?.logSources.find((x) => x.name === lc.name);
+    for (const k of ['type', 'command']) diff('Log source', lc.name, k, s?.[k], lc[k]);
+    for (const [key, field] of Object.entries(LOG_TYPES)) {
+      if (lc[key]) diff('Log source', lc.name, key, s?.[field], { ...s?.[field], ...Object.fromEntries(Object.entries(lc[key]).map(([k, v]) => [k, String(v)])) });
+    }
+  }
+  const proxy = cfg.settings?.proxy;
+  if (proxy) for (const k of ['insecureUpstream', 'decryptHttps']) flag('App settings', 'proxy', k, DB.settings.proxy?.[k], proxy[k]);
+  return out;
+}
+
 // Links requests to spec operations by "METHOD /path" key or operationId. analysisOf(specId) → the
 // analyzed spec (openapi/registry.js specAnalysis). → warnings for operations no attached spec has.
 export function linkOperations(p, links, analysisOf) {
