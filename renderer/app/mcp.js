@@ -3,7 +3,7 @@
 // object that the client sees as JSON. With "Hide credentials" on (the default) credential headers, secret
 // values the app holds, and passwords / tokens / keys in URLs and bodies are removed from what it returns.
 import { DB, S, currentProject, findReq, allRequests, newReq, saveDB } from './store.js';
-import { send } from './http.js';
+import { send, buildRequest } from './http.js';
 import { attachValidation } from './verify.js';
 import { recordHistory, historyEntries } from './history.js';
 import { runCollection, requestsInScope, summarize } from './runner.js';
@@ -84,6 +84,29 @@ function envFor(p, name) {
   if (!e) throw new Error(`No environment "${name}" in ${p.name}. Environments: ${p.envs.map((x) => `"${x.name}"`).join(', ') || 'none'}`);
   return e;
 }
+// send_http and save_request take a URL from the client, but what's sent carries the project's auth, cookies
+// and {{secret}} variables. So they only go to hosts the project already uses (its saved requests and URL
+// variables, in any environment); otherwise a client steered by a prompt injection could send those anywhere.
+const hostOf = (url) => { try { const u = new URL(url); return /^(https?|wss?):$/.test(u.protocol) ? u.host : null; } catch { return null; } };
+function knownHosts(p) {
+  const hosts = new Set();
+  const add = (url) => { const h = hostOf(url); if (h) hosts.add(h); };
+  for (const env of p.envs.length ? p.envs : [undefined]) {
+    for (const r of allRequests(p)) add(buildRequest({ p, f: null, r }, { env }).url);
+    for (const v of env?.vars || []) add(v.v);
+  }
+  return hosts;
+}
+function checkHost(p, url, env) {
+  const target = buildRequest({ p, f: null, r: newReq({ url }) }, { env }).url;
+  const host = hostOf(target);
+  if (!host) throw new Error(`${clean(target)} isn't an absolute http(s) URL (after filling in {{variables}})`);
+  const known = knownHosts(p);
+  if (!known.has(host)) {
+    throw new Error(clean(`${host} isn't a host ${p.name} uses (${[...known].join(', ') || 'none yet'}). Requests from MCP carry the project's credentials, so they only go to hosts its saved requests or URL variables already use: add a request or variable for ${host} in API Workbench first.`));
+  }
+}
+
 async function sendLoc(loc, { env, vars } = {}) {
   const res = await attachValidation(loc, await send(loc, undefined, { env, vars }));
   recordHistory(loc, res, { envId: env?.id ?? loc.p.activeEnv });
@@ -128,11 +151,13 @@ const TOOLS = {
   },
   async send_http({ method, url, headers, body, project, environment }) {
     const p = projectFor(project);
+    const env = envFor(p, environment);
+    checkHost(p, url, env);
     const isJson = body !== undefined && typeof body !== 'string';
     const r = newReq({ name: `MCP: ${method} ${url}`.slice(0, 80), method, url,
       headers: [...Object.entries(headers || {}).map(([k, v]) => ({ k, v: String(v), on: true })), ...(isJson && !Object.keys(headers || {}).some((k) => k.toLowerCase() === 'content-type') ? [{ k: 'Content-Type', v: 'application/json', on: true }] : [])],
       body: body === undefined || body === null ? { type: 'none', text: '', form: [] } : { type: isJson ? 'json' : 'raw', text: isJson ? JSON.stringify(body, null, 2) : body, form: [] } });
-    return responseOut(await sendLoc({ p, f: null, r }, { env: envFor(p, environment) }));
+    return responseOut(await sendLoc({ p, f: null, r }, { env }));
   },
   async run_collection({ project, folder, feature, environment, iterations = 1 }) {
     let scope, label;
@@ -194,6 +219,7 @@ const TOOLS = {
   },
   save_request({ name, project, folder, method, url, headers, json, body, assertions }) {
     const p = projectFor(project);
+    checkHost(p, url); // a saved request is sent later with the project's auth, and its host then counts as known
     const entry = { name, url, ...(method && { method }), ...(headers && { headers }), ...(json !== undefined && { json }), ...(body !== undefined && { body }), ...(assertions && { assertions }) };
     const res = applyConfig(folder ? { folders: [{ name: folder, requests: [entry] }] } : { requests: [entry] }, { project: p, adoptCodeFolder: false });
     saveDB();

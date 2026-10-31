@@ -34,6 +34,12 @@ Put `api-client.json` at the root of the project's code (the folder you'd set as
 - from **Import → api-client.json (project setup file)…** for a file anywhere. Its folder becomes
   the code folder for relative paths.
 
+Before applying, the app lists anything the file would add or change that runs on your computer or
+affects TLS, and waits for you to confirm. That covers task and log-source commands (and their
+working folder, JDK, JVM options and env), the SSH / Kubernetes / Docker settings of log sources,
+project and request scripts, an environment's certificate checks, CA file and proxy, and the proxy's
+`insecureUpstream` / `decryptHttps`. A file you applied before and haven't changed asks nothing.
+
 The format is defined by [`api-client.schema.json`](api-client.schema.json). Point your editor at it
 with `"$schema"` for completion and validation. [`examples/api-client.json`](examples/api-client.json)
 is a complete example that uses every section.

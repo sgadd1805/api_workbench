@@ -2,7 +2,7 @@
 // project's setup out as api-client.json, and importing just the requests of one.
 import { notify } from '../../shared/notify.js';
 import { S, saveDB, currentProject } from '../store.js';
-import { applyConfig, linkOperations, exportConfig, configRequestPaths, requestsOnly, summaryText, CONFIG_FILE } from '../config.js';
+import { applyConfig, riskyChanges, linkOperations, exportConfig, configRequestPaths, requestsOnly, summaryText, CONFIG_FILE } from '../config.js';
 import { ensureProjectSpecs, specAnalysis } from '../openapi/registry.js';
 import { renderAll } from '../views/index.js';
 import { attachSpec } from './specs.js';
@@ -23,15 +23,31 @@ const api = window.electronAPI;
 const pathOf = (p) => (p.codeFolder ? `${p.codeFolder.replace(/[\\/]+$/, '')}/${CONFIG_FILE}` : null);
 const hash = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return String(h >>> 0); };
 
+// riskyChanges() as a list: what changes, and the old and new value.
+const MAX_SHOWN = 2000;
+const shown = (s) => (s.length > MAX_SHOWN ? `${s.slice(0, MAX_SHOWN)}\n… (${s.length - MAX_SHOWN} more characters)` : s);
+const changesHtml = (list) => `<ul class="config-changes">${list.map((c) => `<li><b>${esc(c.what)} “${esc(c.name)}”</b> · ${esc(c.field)}${c.before ? ' changes' : ' is set'}
+  ${c.before ? `<div class="hint">was</div><pre>${esc(shown(c.before))}</pre><div class="hint">now</div>` : ''}<pre>${esc(shown(c.after))}</pre></li>`).join('')}</ul>`;
+
 // cfg: an already-parsed (partial) config, e.g. the requests chosen by config-import-requests; content is then ''.
-async function apply(p, content, codeFolder, { force = false, cfg = null } = {}) {
+// force: skip the schema check; confirmed: the user has seen the commands / scripts / TLS settings it changes.
+async function apply(p, content, codeFolder, { force = false, confirmed = false, cfg = null } = {}) {
   if (!cfg) try { cfg = JSON.parse(content); } catch (err) { return notify(`${CONFIG_FILE} isn't valid JSON: ${err.message}`, 'error', 9000); }
   const issues = force ? [] : await schemaIssues(cfg);
   if (issues.length) {
-    return openModal({ title: `${CONFIG_FILE} has ${issues.length} problem${issues.length === 1 ? '' : 's'}`, ok: 'Apply anyway', wide: true, fields: [],
+    return openModal({ title: `${CONFIG_FILE} has ${issues.length} problem${issues.length === 1 ? '' : 's'}`, ok: 'Apply anyway', cancel: true, wide: true, fields: [],
       hint: 'Checked against docs/api-client.schema.json. Fields the app doesn\'t know are ignored when applying.',
       html: `<ul class="config-issues">${issues.slice(0, 30).map((i) => `<li><code>${esc(i)}</code></li>`).join('')}</ul>`,
-      onOk: () => apply(p, content, codeFolder, { force: true }) });
+      onOk: () => apply(p, content, codeFolder, { force: true, cfg }) });
+  }
+  // Commands and scripts from the file run on this computer, and scripts see secret variables: show what
+  // would change before applying it, however the apply was started.
+  const risky = confirmed ? [] : riskyChanges(cfg, { project: p, codeFolder, adoptCodeFolder: !!content });
+  if (risky.length) {
+    return openModal({ title: `Review ${risky.length} change${risky.length === 1 ? '' : 's'} to commands, scripts or TLS settings`, ok: 'Apply', cancel: true, wide: true, fields: [],
+      hint: `Applying ${content ? CONFIG_FILE : 'these requests'} would make these changes. Commands run on your computer, scripts can read your variables (secret ones too) and change where a request goes, and the network settings decide which certificates are trusted. Apply only if you trust whoever last changed the file; its git history shows who that was.`,
+      html: changesHtml(risky),
+      onOk: () => apply(p, content, codeFolder, { force: true, confirmed: true, cfg }) });
   }
   let res;
   try { res = applyConfig(cfg, { project: p, codeFolder, adoptCodeFolder: !!content }); } catch (err) { return notify(err.message, 'error'); }
