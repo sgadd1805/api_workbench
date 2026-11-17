@@ -6,10 +6,11 @@ import { DB, S, saveDB, setRequestUrl, activeTab, moveTab } from './store.js';
 import { renderResponsePanel, renderSidebar, renderRequestPanel, renderTopbar, renderTabBar, refreshTabBody, jsonStatus, renderHistoryList, refreshSideSpecSoon, renderSidePanel } from './views/index.js';
 import { closeMenu } from './views/menu.js';
 import { filterBranches } from './actions/git.js';
+import { onReplayInput, onReplayChange } from './actions/history.js';
 import {
   ACTIONS, sendCurrent, closeReqTab, cycleTab, onRowInput, pickSlot, selectActiveEnv, renameSelectedEnv,
   openAccounts, onAccountInput, importCapture, openCapture, saveCaptureFlow, useLoginSession, linkOperation, openSearch, onSearchInput, onSearchKey,
-  onNetworkInput, onTaskInput, onTaskChange, onRunnerInput, onRunnerChange, onLoadInput, onCompareChange, onViewerInput, onSnapshotInput, onSpecToolInput, onSpecToolChange, onProxyInput, onProxyChange, onActuatorInput, onActuatorChange, onLogWatchInput, onProtocolInput, onProtocolChange, wireLayoutDrag, onSettingsInput, onSettingsChange, showShortcuts, onNoteInput, onNoteChange, onTokenSourceInput, onTokenSourceChange,
+  onNetworkInput, onTaskInput, onTaskChange, onRunnerInput, onRunnerChange, onLoadInput, onFuzzInput, onFuzzChange, onCompareChange, onViewerInput, onSnapshotInput, onSpecToolInput, onSpecToolChange, onProxyInput, onProxyChange, onActuatorInput, onActuatorChange, onLogWatchInput, onProtocolInput, onProtocolChange, wireLayoutDrag, onSettingsInput, onSettingsChange, showShortcuts, onNoteInput, onNoteChange, onTokenSourceInput, onTokenSourceChange,
 } from './actions/index.js';
 import { closeModal } from './modal.js';
 import { toggleTerminal, onTerminalKey, selectShell } from './terminal.js';
@@ -22,6 +23,7 @@ import { runAssertions } from './assertions.js';
 const ON_INPUT = {
   'url-input': (r, el) => { setRequestUrl(r, el.value); renderSidebar(); renderTabBar(); if (activeTab()?.editorTab === 'params') refreshTabBody(); },
   'body-text': (r, el) => { r.body.text = el.value; const st = $('json-status'); if (st) st.innerHTML = jsonStatus(el.value); },
+  'body-file': (r, el) => { r.body.file = el.value; },
   'assert-text': (r, el) => { r.assertions = el.value.split('\n'); recheckAssertionsSoon(); },
   'auth-token': (r, el) => { r.auth.token = el.value; },
   'auth-user': (r, el) => { r.auth.user = el.value; },
@@ -64,6 +66,7 @@ function onInput(e) {
   if (el.dataset.accField) return onAccountInput(el);
   if (el.id === 'env-name') { renameSelectedEnv(el.value); renderTopbar(); return; }
   if (el.id === 'history-search') { S.history.filter = el.value; renderHistoryList(); return; }
+  if (S.page === 'history' && el.id?.startsWith('replay-') && onReplayInput(el)) return;
   if (el.id === 'git-branch-filter') return filterBranches(el.value);
   if (el.id === 'api-search-input') return onSearchInput(el.value);
   if (el.classList?.contains('view-filter') || el.classList?.contains('view-search')) return onViewerInput(el);
@@ -76,6 +79,7 @@ function onInput(e) {
   if (S.page === 'proxy' && onProxyInput(el)) return;
   if (S.page === 'actuator' && onActuatorInput(el)) return;
   if (S.page === 'load' && onLoadInput(el)) return;
+  if (S.page === 'fuzz' && onFuzzInput(el)) return;
   if (onSettingsInput(el) || onNoteInput(el) || (S.page === 'tokens' && onTokenSourceInput(el))) return;
   if (onProtocolInput(el)) return;
   if (onRowInput(el)) { refreshSideSpecSoon(); return; }
@@ -88,12 +92,14 @@ function onChange(e) {
   if (el.id?.startsWith('slot-sel')) return pickSlot(+el.dataset.slot, el.value);
   if (S.page === 'compare' && onCompareChange(el)) return;
   if (el.id === 'env-select') return selectActiveEnv(el.value);
+  if (S.page === 'history' && el.id?.startsWith('replay-') && onReplayChange(el)) return;
   if (el.id === 'spec-op-select') return linkOperation(el.value);
   if (el.id === 'term-shell') return selectShell(el.value);
   if (S.page === 'envs' && el.id?.startsWith('net-') && el.type === 'checkbox' && onNetworkInput(el)) return;
   if (S.page === 'tasks' && onLogWatchInput(el)) return;
   if (S.page === 'tasks' && onTaskChange(el)) return;
   if (S.page === 'runner' && onRunnerChange(el)) return;
+  if (S.page === 'fuzz' && onFuzzChange(el)) return;
   if (S.page === 'specs' && onSpecToolChange(el)) return;
   if (S.page === 'proxy' && onProxyChange(el)) return;
   if (S.page === 'actuator') { onActuatorChange(el); return; }

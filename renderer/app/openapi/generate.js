@@ -76,6 +76,20 @@ export function bodyFor(op, root) {
   const mt = preferredMedia(content);
   if (!mt) return { body: { type: 'none', text: '', form: [] }, contentType: null };
   const example = mediaExample(content[mt], root);
+  if (/^multipart\/form-data/i.test(mt)) {
+    // One row per property; binary ones (format: binary, or an array of them) become file parts to choose.
+    const schema = deref(root, content[mt].schema) || {};
+    const obj = example && typeof example === 'object' ? example : {};
+    const isFile = (s) => !!s && (s.format === 'binary' || !!s.contentMediaType || (s.type === 'array' && isFile(deref(root, s.items))));
+    const keys = [...new Set([...Object.keys(schema.properties || {}), ...Object.keys(obj)])];
+    const form = keys.map((k) => (isFile(deref(root, schema.properties?.[k]))
+      ? { k, v: '', on: true, file: true }
+      : { k, v: obj[k] === undefined ? '' : typeof obj[k] === 'object' ? JSON.stringify(obj[k]) : String(obj[k]), on: true }));
+    return { body: { type: 'multipart', text: '', form }, contentType: null };
+  }
+  if (/^(application\/octet-stream|image\/|audio\/|video\/|application\/pdf)/i.test(mt)) {
+    return { body: { type: 'binary', text: '', form: [], file: '' }, contentType: mt }; // the spec's type, not the file's guess
+  }
   if (/x-www-form-urlencoded/i.test(mt)) {
     const obj = example && typeof example === 'object' ? example : {};
     return { body: { type: 'form', text: '', form: Object.entries(obj).map(([k, v]) => ({ k, v: typeof v === 'object' ? JSON.stringify(v) : String(v), on: true })) }, contentType: null };

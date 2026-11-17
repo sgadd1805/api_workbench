@@ -815,6 +815,117 @@
                   }
                 }
               }
+            },
+            {
+              "type": "object",
+              "required": [
+                "type",
+                "fields"
+              ],
+              "additionalProperties": false,
+              "description": "multipart/form-data: text fields and file parts. The Content-Type with its boundary is set when sending.",
+              "properties": {
+                "type": {
+                  "const": "multipart"
+                },
+                "fields": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "description": "name → text, { \"value\", \"enabled\" }, or { \"file\", \"type\", \"enabled\" } for a file part.",
+                      "additionalProperties": {
+                        "oneOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "value": {
+                                "type": "string"
+                              },
+                              "enabled": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "value"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "file"
+                            ],
+                            "properties": {
+                              "file": {
+                                "type": "string",
+                                "description": "A file path inside the code folder: relative, without \"..\" (a path outside it is left out when the file is applied)."
+                              },
+                              "type": {
+                                "type": "string",
+                                "description": "The part's Content-Type (default: from the file's extension)."
+                              },
+                              "enabled": {
+                                "type": "boolean"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "type": "array",
+                      "description": "The same as a list, for names that repeat (several files under one name).",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "name"
+                        ],
+                        "additionalProperties": false,
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "type": "string"
+                          },
+                          "file": {
+                            "type": "string",
+                            "description": "A file path inside the code folder: relative, without \"..\" (a path outside it is left out when the file is applied)."
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "enabled": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "type",
+                "file"
+              ],
+              "additionalProperties": false,
+              "description": "One file sent as the whole body. Content-Type comes from the file's extension unless headers set it.",
+              "properties": {
+                "type": {
+                  "const": "binary"
+                },
+                "file": {
+                  "type": "string",
+                  "description": "A file path inside the code folder: relative, without \"..\" (a path outside it is left out when the file is applied)."
+                }
+              }
             }
           ]
         },

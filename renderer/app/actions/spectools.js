@@ -21,9 +21,16 @@ function wireHits() {
   api.onMockHit((h) => {
     const m = T().mock[h.id]; if (!m) return;
     m.hits.unshift(h); m.hits.length = Math.min(m.hits.length, 200);
+    // Stateful writes change what's stored: refresh the counts shown.
+    if (/^state: (created|replaced|updated|deleted)/.test(h.note || '')) api.mockState(h.id).then((r) => { if (r.ok && r.store) { m.store = r.store; if (S.page === 'specs' && T().mockOpen === h.id) renderPage(); } });
     if (S.page === 'specs' && T().mockOpen === h.id) renderPage();
   });
 }
+
+// Fault settings (main/mock.js): % of requests failing with errorStatus, the first N calls per endpoint failing,
+// random extra latency, and a share of slow responses.
+export const MOCK_FAULTS = { errorRate: 0, errorStatus: '503', failFirst: 0, jitterMs: 0, slowRate: 0, slowMs: 3000 };
+const FAULT_FIELDS = { 'mock-err-rate': ['errorRate', 0, 100], 'mock-fail-first': ['failFirst', 0, 1000], 'mock-jitter': ['jitterMs', 0, 60000], 'mock-slow-rate': ['slowRate', 0, 100], 'mock-slow-ms': ['slowMs', 0, 600000] };
 
 const routesFor = (id) => mockRoutes(specAnalysis(id), T().mock[id]?.overrides || {});
 const pushUpdate = (id, extra = {}) => { if (T().mock[id]?.running) api.mockUpdate({ id, routes: routesFor(id), ...extra }); };
@@ -66,15 +73,15 @@ export const specToolActions = {
   'mock-open'(d) {
     wireHits();
     T().mockOpen = d.id;
-    T().mock[d.id] ||= { running: false, delayMs: 0, override: '', overrides: {}, hits: [] };
+    T().mock[d.id] ||= { running: false, delayMs: 0, override: '', overrides: {}, hits: [], stateful: false, faults: { ...MOCK_FAULTS }, store: [] };
     renderPage();
   },
   async 'mock-start'(d) {
     const meta = metaFor(d.id), m = T().mock[d.id], analysis = specAnalysis(d.id); if (!meta || !m || !analysis) return;
-    const port = parseInt(document.getElementById('mock-port')?.value, 10) || 0;
-    const res = await api.mockStart({ id: d.id, routes: routesFor(d.id), port, delayMs: m.delayMs, basePath: mockBasePath(analysis), override: m.override });
+    const port = parseInt(m.portText ?? document.getElementById('mock-port')?.value, 10) || 0;
+    const res = await api.mockStart({ id: d.id, routes: routesFor(d.id), port, delayMs: m.delayMs, basePath: mockBasePath(analysis), override: m.override, stateful: m.stateful, faults: m.faults });
     if (!res.ok) return notify(res.error, 'error');
-    Object.assign(m, { running: true, port: res.port, url: res.url });
+    Object.assign(m, { running: true, port: res.port, url: res.url, store: [] });
     if (port) { meta.mockPort = port; saveDB(); }
     notify(`Mock server on ${res.url}`);
     renderPage();
@@ -93,18 +100,36 @@ export const specToolActions = {
     saveDB(); renderAll();
     notify('Environment "mock" is active: {{baseUrl}} points at the mock server');
   },
+  async 'mock-reset'(d) {
+    const m = T().mock[d.id]; if (!m) return;
+    const res = await api.mockReset(d.id);
+    if (!res.ok) return notify(res.error, 'error');
+    m.store = res.store || []; notify('Mock data and fail-first counters reset'); renderPage();
+  },
   'copy-text'(d, el) { copyText(d.text || ''); flashDone(el); },
 };
 
 // Inputs on the mock panel.
 export function onSpecToolInput(el) {
   const id = T().mockOpen, m = id && T().mock[id]; if (!m) return false;
+  m.faults ||= { ...MOCK_FAULTS };
   if (el.id === 'mock-delay') { m.delayMs = Math.max(0, Math.min(60000, parseInt(el.value, 10) || 0)); pushUpdate(id, { delayMs: m.delayMs }); return true; }
-  return el.id === 'mock-port';
+  const field = FAULT_FIELDS[el.id];
+  if (field) {
+    const [key, min, max] = field;
+    m.faults[key] = Math.max(min, Math.min(max, Number(el.value) || 0));
+    if (m.running) api.mockUpdate({ id, faults: m.faults });
+    return true;
+  }
+  if (el.id === 'mock-port') { m.portText = el.value; return true; } // kept across re-renders until Start
+  return false;
 }
 export function onSpecToolChange(el) {
   const id = T().mockOpen, m = id && T().mock[id]; if (!m) return false;
+  m.faults ||= { ...MOCK_FAULTS };
   if (el.id === 'mock-all') { m.override = el.value; if (m.running) api.mockUpdate({ id, override: m.override }); return true; }
+  if (el.id === 'mock-stateful') { m.stateful = el.checked; if (m.running) api.mockUpdate({ id, stateful: m.stateful }); renderPage(); return true; }
+  if (el.id === 'mock-err-status') { m.faults.errorStatus = el.value; if (m.running) api.mockUpdate({ id, faults: m.faults }); return true; }
   if (el.classList.contains('mock-ov')) {
     if (el.value) m.overrides[el.dataset.op] = el.value; else delete m.overrides[el.dataset.op];
     pushUpdate(id);

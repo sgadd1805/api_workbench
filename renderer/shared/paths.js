@@ -24,3 +24,7 @@ export function relPath(base, file) {
   const inside = win ? f.toLowerCase().startsWith(b.toLowerCase() + '/') : f.startsWith(b + '/');
   return inside ? f.slice(b.length + 1) : file;
 }
+
+// A path from a shared file (api-client.json, request files in the repo) that stays inside the folder it's
+// relative to: not absolute, no ".." segments. Files outside the code folder must be chosen on this computer.
+export const isInsideRel = (p) => !!p && !isAbsPath(p) && !/^[A-Za-z]:/.test(p) && !String(p).split(/[\\/]+/).includes('..');

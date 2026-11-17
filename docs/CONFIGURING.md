@@ -208,7 +208,7 @@ Their `{{variables}}` come from the active environment of the project that uses 
 | `url` | With `{{variables}}`. gRPC uses `grpc://host:port` (plaintext) or `grpcs://host:port` (TLS). |
 | `query` | An object appended to the URL's query string. |
 | `headers` | `name → value`, or `{ "value": "…", "enabled": false }` for a header that's kept but switched off. |
-| `json` / `body` | `json`: any JSON value. `body`: a raw string, or `{ "type": "form", "fields": {…} }`. |
+| `json` / `body` | `json`: any JSON value. `body`: a raw string, `{ "type": "form", "fields": {…} }`, a multipart body or a file body (see [file bodies](#file-bodies)). |
 | `auth` | See [auth](#auth). |
 | `assertions` | JS expressions over `status` and `body` (parsed JSON), e.g. `"body.items.length > 0"`. |
 | `extract` | After a successful send, copy a value: `{ "data.token": "bearer", "items.0.id": "itemId", "header.x-trace": "traceId" }`. |
@@ -305,6 +305,30 @@ These are app-wide and apply to every project.
 - **Give an AI assistant the setup task.** Point it at this file and the schema, and ask it to write
   `api-client.json`. Then use **Project → Apply api-client.json**. It never has to touch `db.json`.
 
+### File bodies
+
+A multipart body has text and file parts. `fields` is an object, or a list of
+`{ "name", "value" | "file", "type"?, "enabled"? }` when a name repeats (several files under one name):
+
+```json
+"body": { "type": "multipart", "fields": {
+  "title": "Holiday",
+  "photo": { "file": "test-data/beach.jpg", "type": "image/jpeg" },
+  "draft": { "value": "true", "enabled": false } } }
+```
+
+A file body sends one file as the whole request body; its Content-Type comes from the extension
+unless the request sets one:
+
+```json
+"body": { "type": "binary", "file": "test-data/upload.pdf" }
+```
+
+File paths must be relative to the code folder, with no `..`. Any other path is left out with a
+warning, unless the request already uses that same file, so a file can't make the app send what it
+likes from your computer. A file outside the code folder that you chose in the app is exported with a
+warning, since it won't exist on other machines.
+
 ## 5. Export a project as `api-client.json`
 
 **Project → Export as api-client.json…** writes the selected project's current setup in this
@@ -375,6 +399,9 @@ folder. The default folder is `api-requests/`; change it in **Project settings**
 - Each file has an `id`. Keep it when editing by hand, because it is how the app matches the file
   to the request.
 - Literal bearer tokens and passwords are left out of the files. `{{variables}}` are kept.
+- Body files (multipart file parts and file bodies) are written relative to the code folder. When
+  loading, a path outside it is dropped unless the request already uses that file, and the app says
+  how many were dropped.
 
 `api-client.json` is a hand-written *setup* description. The request files are the app's own
 output, kept in step with the app. Use either or both.

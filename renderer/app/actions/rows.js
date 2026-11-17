@@ -18,9 +18,11 @@ const LISTS = {
   'login-urls': () => selectedEnv(currentProject())?.loginUrls,
   'ts-headers': () => selectedTokenSource()?.headers,
   'ts-form': () => selectedTokenSource()?.body.form,
+  'rp-headers': () => S.runner.paused?.draft.headers, // a paused collection-runner step (actions/runner.js)
+  'rp-vars': () => S.runner.paused?.varRows,
   'task-env': () => { const p = currentProject(); return p?.tasks.find((t) => t.id === (S.tasks.id || p.tasks[0]?.id))?.env; },
 };
-const PAGE_LISTS = new Set(['vars', 'login-urls', 'ts-headers', 'ts-form', 'task-env']);
+const PAGE_LISTS = new Set(['vars', 'login-urls', 'ts-headers', 'ts-form', 'task-env', 'rp-headers', 'rp-vars']);
 const rerenderFor = (list) => (PAGE_LISTS.has(list) ? renderPage() : renderRequestPanel());
 
 function setParams(rows) {

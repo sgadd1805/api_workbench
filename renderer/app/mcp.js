@@ -14,6 +14,7 @@ import { deref } from './openapi/spec.js';
 import { logIdsFor } from './tasks.js';
 import { applyConfig } from './config.js';
 import { redactCredentials } from '../shared/redact.js';
+import { fileName } from '../shared/mime.js';
 
 const MAX_BODY = 20000;
 const CREDENTIAL_HEADERS = /^(authorization|proxy-authorization|cookie|set-cookie|x-api-key|api-key|x-auth-token|x-csrf-token|x-xsrf-token)$/i;
@@ -135,7 +136,9 @@ const TOOLS = {
     return {
       id: r.id, project: p.name, folder: f?.name ?? null, name: r.name, kind: r.kind || 'http', method: r.method, url: clean(r.url),
       headers: Object.fromEntries(r.headers.filter((h) => h.k).map((h) => [h.k, hiding() && CREDENTIAL_HEADERS.test(h.k) && !/^\{\{.*\}\}$/.test(h.v) ? '[redacted]' : clean(h.v)])),
-      body: r.body.type === 'none' ? null : r.body.type === 'form' ? { form: Object.fromEntries(r.body.form.filter((x) => x.k).map((x) => [x.k, clean(x.v)])) } : { type: r.body.type, text: clean(r.body.text) },
+      body: r.body.type === 'none' ? null : r.body.type === 'form' ? { form: Object.fromEntries(r.body.form.filter((x) => x.k && !x.file).map((x) => [x.k, clean(x.v)])) }
+        : r.body.type === 'multipart' ? { multipart: r.body.form.filter((x) => x.k).map((x) => (x.file ? { name: x.k, file: fileName(x.v) } : { name: x.k, value: clean(x.v) })) }
+        : r.body.type === 'binary' ? { file: fileName(r.body.file) } : { type: r.body.type, text: clean(r.body.text) },
       auth: r.auth.type, assertions: r.assertions, extract: r.chain.filter((c) => c.k).map((c) => `${c.k} → ${c.v || 'bearer'}`),
       ...(r.spec?.opKey && { operation: r.spec.opKey }), ...(r.graphql && { graphql: r.graphql }), ...(r.grpc && { grpc: { service: r.grpc.service, method: r.grpc.method } }),
     };
@@ -220,7 +223,8 @@ const TOOLS = {
   save_request({ name, project, folder, method, url, headers, json, body, assertions }) {
     const p = projectFor(project);
     checkHost(p, url); // a saved request is sent later with the project's auth, and its host then counts as known
-    const entry = { name, url, ...(method && { method }), ...(headers && { headers }), ...(json !== undefined && { json }), ...(body !== undefined && { body }), ...(assertions && { assertions }) };
+    const entry = { name, url, ...(method && { method }), ...(headers && { headers }), ...(json !== undefined && { json }), ...(typeof body === 'string' && { body }), ...(assertions && { assertions }) };
+    // body is a raw string only: an object here would be a file body, which an MCP client must not be able to create.
     const res = applyConfig(folder ? { folders: [{ name: folder, requests: [entry] }] } : { requests: [entry] }, { project: p, adoptCodeFolder: false });
     saveDB();
     const loc = requestFor(folder ? `${folder}/${name}` : name, p.id);

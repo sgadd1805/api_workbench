@@ -8,14 +8,30 @@ import { activeVars, resolve } from './vars.js';
 import { getToken, cachedToken, tokenSource, bearerOf, inspectToken } from './tokens.js';
 import { runPhase, applyRequestEdits } from './scripts.js';
 import { newCorrelation } from './tasks.js';
+import { isAbsPath, joinPath } from '../shared/paths.js';
+import { mimeFor, fileName } from '../shared/mime.js';
 
 // UTF-8 safe (btoa alone throws on non-Latin-1 characters).
 export const b64utf8 = (s) => btoa(Array.from(new TextEncoder().encode(s), (c) => String.fromCharCode(c)).join(''));
 
-const formBody = (rows, sub) => rows.filter((r) => r.on && r.k).map((r) => encodeURIComponent(sub(r.k)) + '=' + encodeURIComponent(sub(r.v))).join('&');
-const BODY_CONTENT_TYPE = { json: 'application/json', form: 'application/x-www-form-urlencoded' };
+const formBody = (rows, sub) => rows.filter((r) => r.on && r.k && !r.file).map((r) => encodeURIComponent(sub(r.k)) + '=' + encodeURIComponent(sub(r.v))).join('&');
+const BODY_CONTENT_TYPE = { json: 'application/json', form: 'application/x-www-form-urlencoded', multipart: 'multipart/form-data' };
 
-// → { method, url, headers: {name: value}, body: string ('' = none), timeoutMs, redirect, missingVars: [name] }
+// A file path as typed: relative ones are inside the project's code folder.
+const bodyPath = (p, path) => (path && !isAbsPath(path) && p.codeFolder ? joinPath(p.codeFolder, path) : path);
+
+// Multipart parts (body.form rows; a row with `file` holds a path): [{ name, value } | { name, file, filename, contentType }].
+// main/http.js reads the files and builds the body when sending.
+function multipartParts(p, rows, sub) {
+  return rows.filter((x) => x.on && x.k).map((x) => {
+    if (!x.file) return { name: sub(x.k), value: sub(x.v) };
+    const file = bodyPath(p, sub(x.v).trim());
+    return { name: sub(x.k), file, filename: fileName(file), contentType: x.type || mimeFor(file) };
+  });
+}
+
+// → { method, url, headers: {name: value}, body: string ('' = none), timeoutMs, redirect, missingVars: [name],
+//     bodyParts?: multipart parts (see multipartParts), bodyFile?: path of a file sent as the whole body }
 // {{variables}} are resolved from the project's active environment.
 // Header names are case-insensitive; a plain object keyed by name would send both "cookie" and
 // "Cookie", which fetch merges into one comma-joined (invalid) value.
@@ -46,18 +62,21 @@ export function buildRequest(loc, opts = {}) {
     if (!findHeader('traceparent')) headers['traceparent'] = opts.correlation.traceparent;
   }
 
-  let body = '';
+  let body = '', bodyParts = null, bodyFile = '';
   if (kindOf(r) === 'graphql') {
     body = graphqlBody(r, sub);
     if (!findHeader('Content-Type')) headers['Content-Type'] = 'application/json';
   } else if (!['GET', 'HEAD'].includes(r.method)) {
     if (r.body.type === 'form') body = formBody(r.body.form, sub);
+    else if (r.body.type === 'multipart') bodyParts = multipartParts(p, r.body.form, sub);
+    else if (r.body.type === 'binary') bodyFile = bodyPath(p, sub(r.body.file || '').trim());
     else if (r.body.type !== 'none') body = sub(r.body.text);
-    const type = BODY_CONTENT_TYPE[r.body.type];
-    if (body && type && !findHeader('Content-Type')) headers['Content-Type'] = type;
+    const type = bodyFile ? mimeFor(bodyFile) : BODY_CONTENT_TYPE[r.body.type];
+    if ((body || bodyParts?.length || bodyFile) && type && !findHeader('Content-Type')) headers['Content-Type'] = type;
   }
   return {
     method: kindOf(r) === 'graphql' ? 'POST' : r.method, url: sub(r.url), headers, body,
+    ...(bodyParts?.length && { bodyParts }), ...(bodyFile && { bodyFile }),
     timeoutMs: Math.max(0, Number(r.options.timeoutSec) || 0) * 1000,
     redirect: r.options.followRedirects ? 'follow' : 'manual',
     network: env?.network || null,
@@ -122,7 +141,10 @@ function transport(loc, id, wire) {
 
 // Never throws: failures come back as { error, requestData } so the UI can show them.
 // Successful results also carry `warnings` (unknown variables) and `extracted` (applied extract rules).
-// opts: { vars (extra variables, e.g. a runner data row), env (environment override), scripts: false to skip scripts }
+// opts: { vars (extra variables, e.g. a runner data row), env (environment override), scripts: false to skip scripts,
+//         mutate(wire) → wire: a last change to what's sent, after pre-request scripts (fuzzing; no 401 retry then),
+//         sideEffects: false → nothing is stored: no cookies, extract rules or post-response script, and variables a
+//         pre-request script sets apply to this send only }
 export async function send(loc, id = newSendId(), opts = {}) {
   let requestData = null;
   const scriptLogs = [], scriptTests = [], scriptErrors = [];
@@ -141,15 +163,20 @@ export async function send(loc, id = newSendId(), opts = {}) {
       const seen = structuredClone(wire); // the request as the script saw it
       const pre = await runPhase(loc, 'pre', { request: wire, vars: { ...activeVars(env ? { envs: [env], activeEnv: env.id } : null), ...extraVars } });
       scriptLogs.push(...pre.logs); scriptTests.push(...pre.tests); scriptErrors.push(...pre.errors);
-      if (Object.keys(pre.setVars).length) { applyScriptVars(loc.p, pre.setVars, extraVars, opts.env, `${loc.r.name}: pre-request script`); ({ missingVars, ...wire } = build()); }
+      if (Object.keys(pre.setVars).length) {
+        if (opts.sideEffects === false) Object.assign(extraVars, pre.setVars);
+        else applyScriptVars(loc.p, pre.setVars, extraVars, opts.env, `${loc.r.name}: pre-request script`);
+        ({ missingVars, ...wire } = build());
+      }
       wire = applyRequestEdits(seen, pre.request, wire);
       if (pre.errors.length) return { error: `Pre-request script failed: ${pre.errors[0]}`, requestData: wire, scriptLogs, scriptTests };
     }
+    if (opts.mutate) wire = opts.mutate(structuredClone(wire));
     requestData = wire;
     const t0 = performance.now();
     let res = await transport(loc, id, wire);
     let tokenRefreshed = false;
-    if (usesSource && res.ok && res.status === 401) {
+    if (usesSource && res.ok && res.status === 401 && !opts.mutate) {
       token = (await getToken(auth.sourceId, loc.p, { force: true })).token;
       ({ missingVars, ...wire } = buildRequest(loc, { token, correlation }));
       requestData = wire;
@@ -160,8 +187,9 @@ export async function send(loc, id = newSendId(), opts = {}) {
     // Record the headers that actually went out (defaults, Host, Content-Length) for history and Trace.
     if (res.sentHeaders) requestData = { ...requestData, headers: res.sentHeaders };
     let dirty = false;
-    if (res.setCookies?.length) { loc.p.cookies = mergeCookies(loc.p.cookies, res.setCookies); dirty = true; }
-    const extracted = extractValues(loc.r.chain, res);
+    const keep = opts.sideEffects !== false;
+    if (keep && res.setCookies?.length) { loc.p.cookies = mergeCookies(loc.p.cookies, res.setCookies); dirty = true; }
+    const extracted = keep ? extractValues(loc.r.chain, res) : [];
     if (extracted.length) { applyExtracted(loc.p, extracted, loc.r.name); dirty = true; }
     if (dirty) { markAutomatic(); saveDB(); } // what a send stores isn't an edit to undo
     const warnings = missingVars.map((v) => `{{${v}}} is not defined in the active environment and was sent as written`);
@@ -173,7 +201,7 @@ export async function send(loc, id = newSendId(), opts = {}) {
     const time = Math.round(performance.now() - t0);
     // Post-response scripts: tests, variables for later requests, and (in the runner) the next request.
     let next;
-    if (opts.scripts !== false) {
+    if (opts.scripts !== false && keep) {
       const env = opts.env || activeEnv(loc.p);
       const post = await runPhase(loc, 'post', { request: requestData, response: { status: res.status, statusText: res.statusText, headers: res.headers, body: res.body, time }, vars: { ...activeVars(env ? { envs: [env], activeEnv: env.id } : null), ...extraVars } });
       scriptLogs.push(...post.logs); scriptTests.push(...post.tests); scriptErrors.push(...post.errors);

@@ -3,7 +3,8 @@
 // keep their full bodies in memory until restart).
 //
 // Entry: { id, at, reqId, reqName, projectId, method, url (as sent, variables resolved),
-//          request: { headers, body }, response: { status, statusText, headers, body, time, timing, truncated? } | null,
+//          request: { headers, body, parts? (multipart: [{ name, value } | { name, file, filename, contentType }]), file? (a file sent as the body) },
+//          replayOf?: the entry this one re-sent with a change (actions/history.js), change?: what was changed, response: { status, statusText, headers, body, time, timing, truncated? } | null,
 //          error: string | null }
 import { uid } from './store.js';
 import { recordTiming } from './timings.js';
@@ -21,7 +22,7 @@ export function entryFromSend(loc, res, now = Date.now()) {
   return {
     id: uid(), at: now, reqId: loc.r.id, reqName: loc.r.name, projectId: loc.p.id,
     method: sent.method || loc.r.method, url: sent.url || loc.r.url,
-    request: { headers: sent.headers || {}, body: sent.body || '' },
+    request: { headers: sent.headers || {}, body: sent.body || '', ...(sent.bodyParts && { parts: sent.bodyParts }), ...(sent.bodyFile && { file: sent.bodyFile }) },
     response: res.error ? null : { status: res.status, statusText: res.statusText, headers: res.headers, body: res.body, time: res.time, timing: res.timing },
     error: res.error || null,
   };
@@ -30,14 +31,26 @@ export function entryFromSend(loc, res, now = Date.now()) {
 // Cancelled sends aren't recorded; errors (timeouts, refused connections, …) are. The response time also
 // goes into the request's trend (timings.js), and res.slow says whether it was markedly slower than the
 // request's usual runs in that environment (envId: the environment it was sent in; default the active one).
-export function recordHistory(loc, res, { envId = loc?.p?.activeEnv ?? null } = {}) {
+// extra: fields added to the entry (replayOf / change for a re-send from History).
+export function recordHistory(loc, res, { envId = loc?.p?.activeEnv ?? null, extra = null } = {}) {
   if (!res || res.cancelled) return null;
   res.slow = recordTiming(loc, res, envId);
-  const entry = entryFromSend(loc, res);
+  return push({ ...entryFromSend(loc, res), ...extra });
+}
+
+function push(entry) {
   entries.unshift(entry);
   if (entries.length > MAX_ENTRIES) entries.length = MAX_ENTRIES;
   window.electronAPI.historyAppend(entry);
   return entry;
+}
+
+// A History entry sent again with a change (replay.js): recorded under the same request, without adding to
+// its response-time trend (it isn't the request as saved). → the new entry
+export function recordReplay(base, res, { change = '' } = {}) {
+  if (!res || res.cancelled) return null;
+  const loc = { r: { id: base.reqId, name: base.reqName, method: base.method, url: base.url }, p: { id: base.projectId } };
+  return push({ ...entryFromSend(loc, res), ...(base.source && { source: base.source }), replayOf: base.id, change });
 }
 
 // Traffic captured by the intercepting proxy (actions/proxy.js): no saved request behind it.
@@ -50,10 +63,7 @@ export function recordExchange(x) {
     response: x.error ? null : { status: x.status, statusText: x.statusText, headers: x.responseHeaders || {}, body: x.response?.body || '', time: x.time, timing: null },
     error: x.error || null,
   };
-  entries.unshift(entry);
-  if (entries.length > MAX_ENTRIES) entries.length = MAX_ENTRIES;
-  window.electronAPI.historyAppend(entry);
-  return entry;
+  return push(entry);
 }
 
 export function deleteHistoryEntry(id) { entries = entries.filter((e) => e.id !== id); window.electronAPI.historyDelete(id); }
@@ -66,7 +76,7 @@ export function runsFor(reqId, max = 10) {
 
 // The panel's search: every word must appear in the method, URL, status, request name or error.
 export function matchesQuery(e, query) {
-  const hay = `${e.method} ${e.url} ${e.response?.status ?? 'error'} ${e.reqName} ${e.error ?? ''}`.toLowerCase();
+  const hay = `${e.method} ${e.url} ${e.response?.status ?? 'error'} ${e.reqName} ${e.error ?? ''} ${e.change ?? ''}`.toLowerCase();
   return query.toLowerCase().split(/\s+/).filter(Boolean).every((w) => hay.includes(w));
 }
 

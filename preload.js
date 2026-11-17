@@ -89,6 +89,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   specsParse: (text, name) => inv('specs-parse', { text, name }),
   mockStart: (opts) => inv('mock-start', opts),
   mockUpdate: (opts) => inv('mock-update', opts),
+  mockReset: (id) => inv('mock-reset', id),
+  mockState: (id) => inv('mock-state', id),
   mockStop: (id) => inv('mock-stop', id),
   mockList: () => inv('mock-list'),
   proxyStart: (opts) => inv('proxy-start', opts),

@@ -13,7 +13,26 @@ import { icon } from '../../shared/icons.js';
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
 const AUTH_TYPES = [['inherit', 'inherit'], ['none', 'none'], ['bearer', 'bearer'], ['basic', 'basic'], ['token', 'token source']];
-const BODY_TYPES = [['none', 'none'], ['raw', 'raw'], ['json', 'JSON'], ['form', 'form (urlencoded)']];
+const BODY_TYPES = [['none', 'none'], ['raw', 'raw'], ['json', 'JSON'], ['form', 'form (urlencoded)'], ['multipart', 'multipart (form-data)'], ['binary', 'file']];
+
+// Multipart rows: like key/value rows (same data-list, so actions/rows.js edits them), plus a text / file switch
+// per part; a file part's value is its path, with a picker.
+function multipartRowsHtml(rows) {
+  const attrs = (i, k) => `data-list="form" data-idx="${i}" data-k="${k}"`;
+  return rows.map((h, i) => `<div class="kv-row multipart-row">
+      <input type="checkbox" ${attrs(i, 'on')} ${h.on ? 'checked' : ''} aria-label="Send this part"/>
+      <input type="text" ${attrs(i, 'k')} value="${esc(h.k)}" placeholder="name" spellcheck="false"/>
+      <button class="btn-ghost small part-kind" data-action="part-kind" data-idx="${i}" title="Switch between a text value and a file">${h.file ? 'File' : 'Text'}</button>
+      <input type="text" ${attrs(i, 'v')} value="${esc(h.v)}" placeholder="${h.file ? 'path to the file' : 'value (may use {{variables}})'}" spellcheck="false"/>
+      ${h.file ? `<button class="btn-ghost small" data-action="part-file" data-idx="${i}" title="Choose the file">Choose…</button>` : ''}
+      <button class="btn-ghost small" data-action="del-kv" data-list="form" data-idx="${i}" title="Remove">${icon('close')}</button></div>`).join('')
+    + '<button class="btn-ghost small" data-action="add-kv" data-list="form">+ Add</button> <button class="btn-ghost small" data-action="add-file-part">+ Add file</button>';
+}
+
+function binaryBodyHtml(r) {
+  return `<div class="spec-row"><input type="text" id="body-file" class="grow" value="${esc(r.body.file || '')}" placeholder="path to the file to send" spellcheck="false"/>
+    <button class="btn-ghost small" data-action="body-file-pick">Choose…</button></div>`;
+}
 
 // Spec and Git live in the side panel (views/layout.js); Extract, Assertions and Options under More.
 export const REQUEST_TABS = [['params', 'Params'], ['headers', 'Headers'], ['body', 'Body'], ['auth', 'Auth'], ['more', 'More']];
@@ -59,7 +78,15 @@ const TAB_BODIES = {
     if (r.body.type === 'json') editor = `${codeEditorHtml({ id: 'body-text', value: r.body.text, lang: 'json', rows: 10, placeholder: '{"key": "{{value}}"}' })}
       <div style="display:flex;gap:10px;align-items:center;margin-top:4px"><button class="btn-ghost small" data-action="format-json-body">Format</button><span id="json-status" class="hint">${jsonStatus(r.body.text)}</span></div>`;
     if (r.body.type === 'form') editor = kvRows(r.body.form, 'form');
-    const note = r.body.type === 'json' || r.body.type === 'form' ? '<p class="mt-6 hint">Content-Type is set automatically unless you add one in Headers.</p>' : '';
+    if (r.body.type === 'multipart') editor = multipartRowsHtml(r.body.form);
+    if (r.body.type === 'binary') editor = binaryBodyHtml(r);
+    const NOTES = {
+      json: 'Content-Type is set automatically unless you add one in Headers.',
+      form: 'Content-Type is set automatically unless you add one in Headers.',
+      multipart: 'Files are read when sending. Content-Type (with its boundary) is set automatically; a file part\'s type comes from its extension. Relative paths are inside the project\'s code folder.',
+      binary: 'The file is sent as the whole body, read when sending. Content-Type comes from the file\'s extension unless you set one in Headers. A relative path is inside the project\'s code folder.',
+    };
+    const note = NOTES[r.body.type] ? `<p class="mt-6 hint">${esc(NOTES[r.body.type])}</p>` : '';
     return `<div class="mb-6">${radios}</div>${editor}${note}`;
   },
   auth: (r) => `<select id="auth-type">${AUTH_TYPES.map(([t, label]) => `<option value="${t}" ${r.auth.type === t ? 'selected' : ''}>${label}</option>`).join('')}</select>
