@@ -9,6 +9,9 @@
 const http = require('http');
 const https = require('https');
 const zlib = require('zlib');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
 const { agentFor, httpProxyTarget, h2Session } = require('./network');
 
 const MAX_REDIRECTS = 20;
@@ -133,6 +136,49 @@ function exchangeH2(url, { method, headers, body, signal, network }) {
   });
 }
 
+// ---- File bodies: multipart/form-data with file parts, or one file as the whole body.
+const MAX_FILE_BYTES = 200 * 1024 * 1024;
+
+async function readBodyFile(file, what) {
+  if (!file) throw new Error(`${what}: no file chosen`);
+  try {
+    const st = await fs.promises.stat(file);
+    if (!st.isFile()) throw new Error('not a file');
+    if (st.size > MAX_FILE_BYTES) throw new Error('larger than 200 MB');
+    return await fs.promises.readFile(file);
+  } catch (err) { throw new Error(`${what}: can't read ${file} (${err.code || err.message})`); }
+}
+
+// Header-safe name / filename in Content-Disposition (as browsers do: quotes and line breaks percent-encoded).
+const dispositionValue = (s) => String(s).replace(/"/g, '%22').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+
+// parts: [{ name, value } | { name, file, filename?, contentType? }]. → Buffer
+function multipartBody(parts, files, boundary) {
+  const chunks = [];
+  parts.forEach((part, i) => {
+    let head = `--${boundary}\r\nContent-Disposition: form-data; name="${dispositionValue(part.name)}"`;
+    if (part.file) head += `; filename="${dispositionValue(part.filename || path.basename(part.file))}"\r\nContent-Type: ${part.contentType || 'application/octet-stream'}`;
+    chunks.push(Buffer.from(head + '\r\n\r\n'), part.file ? files[i] : Buffer.from(String(part.value ?? '')), Buffer.from('\r\n'));
+  });
+  chunks.push(Buffer.from(`--${boundary}--\r\n`));
+  return Buffer.concat(chunks);
+}
+
+// → { payload: Buffer | string | undefined, headers } with the multipart boundary added to Content-Type.
+async function buildPayload({ body, bodyParts, bodyFile, headers }) {
+  if (bodyFile) return { payload: await readBodyFile(bodyFile, 'Body file'), headers };
+  if (!bodyParts?.length) return { payload: body, headers };
+  const files = await Promise.all(bodyParts.map((p) => (p.file != null ? readBodyFile(p.file, `File for part "${p.name}"`) : null)));
+  const key = Object.keys(headers).find((k) => k.toLowerCase() === 'content-type');
+  const given = key ? headers[key] : '';
+  // A boundary the request sets itself is kept; otherwise one is made up and added to Content-Type.
+  const boundary = /;\s*boundary="?([^";]+)"?/i.exec(given)?.[1] || `----api-workbench-${crypto.randomBytes(12).toString('hex')}`;
+  const out = { ...headers };
+  if (key) delete out[key];
+  out[key || 'Content-Type'] = /boundary=/i.test(given) ? given : `${given && /^multipart\//i.test(given) ? given.split(';')[0] : 'multipart/form-data'}; boundary=${boundary}`;
+  return { payload: multipartBody(bodyParts, files, boundary), headers: out };
+}
+
 const REDIRECT = new Set([301, 302, 303, 307, 308]);
 
 // Certificate failures get a pointer to the settings that fix them (instead of Node's command-line hint).
@@ -146,7 +192,8 @@ function describeError(err) {
     : text;
 }
 
-async function proxyFetch({ id, url, method = 'GET', headers = {}, body, timeoutMs = 0, redirect = 'follow', network = null }) {
+// bodyParts / bodyFile (renderer/app/http.js buildRequest): file bodies, read here when sending.
+async function proxyFetch({ id, url, method = 'GET', headers = {}, body, bodyParts, bodyFile, timeoutMs = 0, redirect = 'follow', network = null }) {
   const ctrl = new AbortController();
   if (id) inflight.set(id, ctrl);
   const timer = timeoutMs > 0 ? setTimeout(() => ctrl.abort(new Error(`Timed out after ${timeoutMs / 1000} s`)), timeoutMs) : null;
@@ -155,7 +202,8 @@ async function proxyFetch({ id, url, method = 'GET', headers = {}, body, timeout
   try {
     let target = new URL(url);
     if (!/^https?:$/.test(target.protocol)) throw new Error(`Unsupported protocol ${target.protocol}`);
-    let opts = { method, headers: withDefaults(headers), body, signal: ctrl.signal, network };
+    const built = await buildPayload({ body, bodyParts, bodyFile, headers });
+    let opts = { method, headers: withDefaults(built.headers), body: built.payload, signal: ctrl.signal, network };
     for (let n = 0; ; n++) {
       const { res, body: raw, timing, sentHeaders } = await exchange(target, opts);
       const location = res.headers.location;
@@ -206,4 +254,4 @@ function register(ipcMain) {
   ipcMain.handle('cancel-fetch', (_e, id) => cancel(id));
 }
 
-module.exports = { proxyFetch, cancel, register, isBinary, decode };
+module.exports = { proxyFetch, cancel, register, isBinary, decode, buildPayload };

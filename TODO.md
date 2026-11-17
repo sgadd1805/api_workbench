@@ -77,6 +77,18 @@ Ideas for making this a better debugging tool, roughly in priority order within 
   Better still, an importable config file (e.g. `api-client.json` in the code repo) that the app
   reads and merges, so the AI never edits app data directly.
 
+## Debugging tools
+
+- [x] **Send again from History with one change:** a header, query parameter, body field or the
+  environment, with the two responses compared.
+- [x] **Fuzz from the spec:** boundary values, missing required fields, wrong types, oversized
+  strings and missing credentials; 5xx, accepted bad input and off-spec responses flagged.
+- [x] **Stateful mock server and faults:** POST stores data that a later GET returns; random
+  failures, fail-first-N and slow responses for testing retries and timeouts.
+- [x] **Runner breakpoints:** pause before a step, edit the variables or the request, then continue,
+  skip or stop.
+- [x] **Multipart and file bodies:** form-data with file parts, and a file as the raw body.
+
 ## Rounding it out
 
 - [x] **Load testing:** N requests at a chosen concurrency, with p50/p95/p99 from the existing

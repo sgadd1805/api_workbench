@@ -10,7 +10,7 @@ import { newTask, newLogSource, sourceParts } from './tasks.js';
 import { newTokenSource } from './tokens.js';
 import { withQuery } from './query.js';
 import { setKind } from './protocols.js';
-import { joinPath as join, relPath as rel } from '../shared/paths.js';
+import { joinPath as join, relPath as rel, isInsideRel } from '../shared/paths.js';
 import { safeRepoSubdir } from './repo.js';
 
 export const CONFIG_FILE = 'api-client.json';
@@ -39,10 +39,40 @@ function authFrom(a) {
   return { ...a };
 }
 
-function bodyFrom(c) {
+// A file path in the file → the stored path. Paths must stay inside the code folder (relative, no ".."), so a
+// shared file can't make the app upload something else from this computer; an absolute path is kept only when
+// the request already has it (an export of the user's own setup). Rejected paths become '' with a warning.
+function filePathFrom(file, { codeFolder = '', known = new Set(), warnings = [], where = 'Request' } = {}) {
+  const f = String(file ?? '').trim();
+  if (!f) return '';
+  if (isInsideRel(f)) return join(codeFolder, f);
+  if (known.has(f)) return f;
+  warnings.push(`${where}: the file "${f}" was left out; files in ${CONFIG_FILE} must be inside the code folder (a relative path without "..")`);
+  return '';
+}
+
+// Every file path a request's body uses now (to keep an absolute one the file repeats).
+export const bodyFiles = (body) => new Set([body?.file, ...(body?.form || []).filter((x) => x.file).map((x) => x.v)].filter(Boolean));
+
+// Multipart fields: { name: value | { value, enabled } | { file, type?, enabled? } }, or a list of
+// { name, value | file, type?, enabled? } when names repeat (several files under one name).
+function multipartRows(fields, fileOpts) {
+  const list = Array.isArray(fields) ? fields.map((f) => [f?.name, f]) : Object.entries(fields || {});
+  return list.filter(([k]) => k).map(([k, v]) => {
+    if (v && typeof v === 'object' && v.file !== undefined) return { k, v: filePathFrom(v.file, fileOpts), on: v.enabled !== false, file: true, ...(v.type && { type: String(v.type) }) };
+    if (v && typeof v === 'object') return { k, v: String(v.value ?? ''), on: v.enabled !== false };
+    return { k, v: String(v ?? ''), on: true };
+  });
+}
+
+// fileOpts (requests only): { codeFolder, known, warnings, where } for file bodies.
+function bodyFrom(c, fileOpts) {
   if (c.json !== undefined) return { type: 'json', text: jsonText(c.json), form: [] };
   if (typeof c.body === 'string') return { type: 'raw', text: c.body, form: [] };
   if (c.body?.type === 'form') return { type: 'form', text: '', form: rows(c.body.fields) };
+  if (fileOpts && c.body?.type === 'multipart') return { type: 'multipart', text: '', form: multipartRows(c.body.fields, fileOpts) };
+  if (fileOpts && c.body?.type === 'binary') return { type: 'binary', text: '', form: [], file: filePathFrom(c.body.file, fileOpts) };
+  if (['multipart', 'binary'].includes(c.body?.type)) return undefined;
   if (c.body?.type) return { type: c.body.type, text: c.body.text || '', form: rows(c.body.fields) };
   return undefined;
 }
@@ -54,7 +84,7 @@ function applyRequest(r, c, codeFolder, warnings) {
   if (c.method) r.method = String(c.method).toUpperCase();
   if (c.url !== undefined) r.url = c.query ? withQuery(c.url, Object.entries(c.query).map(([k, v]) => ({ k, v: String(v) }))) : c.url;
   if (c.headers) r.headers = rows(c.headers);
-  const body = bodyFrom(c); if (body) r.body = body;
+  const body = bodyFrom(c, { codeFolder, known: bodyFiles(r.body), warnings, where: `Request "${c.name}"` }); if (body) r.body = body;
   const auth = authFrom(c.auth); if (auth) r.auth = auth;
   if (auth?.type === 'token' && !auth.sourceId) warnings.push(`Request "${c.name}": no token source "${c.auth.source}"`);
   if (c.assertions) r.assertions = [...c.assertions];
@@ -318,6 +348,23 @@ function authOut(a, warnings, where) {
   return out;
 }
 
+// A body file for the export: relative to the code folder; one outside it is written as is, with a warning
+// (teammates won't have it, and applying the file elsewhere leaves it out).
+function fileOut(file, base, warnings, name) {
+  const out = rel(base, file || '');
+  if (out && !isInsideRel(out)) warnings.push(`Request "${name}": the file ${out} is outside the code folder, so it won't apply on other computers`);
+  return out || '';
+}
+function multipartOut(form, base, warnings, name) {
+  const list = form.filter((x) => x.k);
+  const one = (x) => (x.file
+    ? { file: fileOut(x.v, base, warnings, name), ...(x.type && { type: x.type }), ...(x.on === false && { enabled: false }) }
+    : x.on === false ? { value: x.v, enabled: false } : x.v);
+  // A list when names repeat (several files under one name); else the shorter { name: … } form.
+  if (new Set(list.map((x) => x.k)).size < list.length) return list.map((x) => { const v = one(x); return { name: x.k, ...(typeof v === 'object' ? v : { value: v }) }; });
+  return Object.fromEntries(list.map((x) => [x.k, one(x)]));
+}
+
 function requestOut(r, base, warnings) {
   const c = { name: r.name };
   if (r.kind) c.kind = r.kind;
@@ -331,7 +378,9 @@ function requestOut(r, base, warnings) {
     if (r.body?.text) c.grpc.message = parsed(r.body.text) ?? r.body.text;
   } else if (r.body?.type === 'json' && r.body.text) c.json = parsed(r.body.text) ?? r.body.text;
   else if (r.body?.type === 'raw' && r.body.text) c.body = r.body.text;
-  else if (r.body?.type === 'form' && r.body.form?.some((x) => x.k)) c.body = { type: 'form', fields: Object.fromEntries(r.body.form.filter((x) => x.k && x.on !== false).map((x) => [x.k, x.v])) };
+  else if (r.body?.type === 'form' && r.body.form?.some((x) => x.k)) c.body = { type: 'form', fields: Object.fromEntries(r.body.form.filter((x) => x.k && x.on !== false && !x.file).map((x) => [x.k, x.v])) };
+  else if (r.body?.type === 'multipart' && r.body.form?.some((x) => x.k)) c.body = { type: 'multipart', fields: multipartOut(r.body.form, base, warnings, r.name) };
+  else if (r.body?.type === 'binary') c.body = { type: 'binary', file: fileOut(r.body.file, base, warnings, r.name) };
   const auth = authOut(r.auth, warnings, `Request "${r.name}"`); if (auth) c.auth = auth;
   if (r.assertions?.length) c.assertions = [...r.assertions];
   if (r.chain?.some((x) => x.k)) c.extract = Object.fromEntries(r.chain.filter((x) => x.k && x.on !== false).map((x) => [x.k, x.v]));

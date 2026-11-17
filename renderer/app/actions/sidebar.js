@@ -16,6 +16,7 @@ import { pushNotes } from './notes.js';
 import { openReq } from './core.js';
 import { runnerActions } from './runner.js';
 import { loadActions } from './load.js';
+import { fuzzActions } from './fuzz.js';
 
 function newFolder(p) {
   openModal({ title: 'New folder', ok: 'Create', fields: [{ key: 'name', label: 'Name' }],
@@ -70,6 +71,7 @@ export function rowMenu(kind, id, pid) {
     return [
       { label: 'New request', run: () => sidebarActions['new-request-in']({ id, pid }) },
       { label: 'Run folder…', run: () => runnerActions['open-runner']({ scope: `folder|${id}` }) },
+      { label: 'Fuzz folder from spec…', run: () => fuzzActions['open-fuzz']({ scope: `folder|${id}` }) },
       { sep: true },
       { label: 'Rename', hint: 'double-click', run: () => startRename('folder', id, pid) },
       { label: 'Delete folder', danger: true, run: () => removeFolder(p, f) }];
@@ -83,6 +85,7 @@ export function rowMenu(kind, id, pid) {
     { label: 'Rename', hint: 'double-click', run: () => startRename('request', id) },
     { label: 'Duplicate', run: () => { const copy = duplicateRequest(id); saveDB(); if (copy) openReq(copy.id); } },
     { label: 'Load test…', run: () => { openReq(id); loadActions['open-load'](); } },
+    { label: 'Fuzz from spec…', run: () => { openReq(id); fuzzActions['open-fuzz']({ scope: `request|${id}` }); } },
     { head: 'Move to (or drag it)' },
     ...targets.map(({ p, f }) => ({
       label: `${DB.projects.length > 1 ? p.name + ' / ' : ''}${f ? f.name : '(project root)'}`,

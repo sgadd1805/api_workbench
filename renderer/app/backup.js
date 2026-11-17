@@ -10,7 +10,7 @@
 // secret-looking token source fields and account passwords are blanked (the shape stays complete).
 import { DB, uid, normalizeProject, normalizeDB, allRequests, pruneFeatures, findReq } from './store.js';
 import { stripSecrets } from './collection.js';
-import { joinPath, relPath } from '../shared/paths.js';
+import { joinPath, relPath, isAbsPath } from '../shared/paths.js';
 
 export const BACKUP_FORMAT = 'api-workbench-backup';
 // UI and window state that belongs to this computer's session, not to a backup.
@@ -36,6 +36,8 @@ export function filesWanted(projects) {
     for (const r of allRequests(p)) if (r.kind === 'grpc' && r.grpc?.protoFile) {
       protos.push({ file: r.grpc.protoFile, includeDirs: String(r.grpc.includeDirs || '').split(',').map((d) => d.trim()).filter(Boolean) });
     }
+    // Files sent as bodies (absolute paths; {{variable}} paths can't be known ahead of sending).
+    for (const r of allRequests(p)) for (const f of [r.body?.file, ...(r.body?.form || []).filter((x) => x.file).map((x) => x.v)]) if (f && isAbsPath(f) && !f.includes('{{')) paths.add(f);
   }
   return { paths: [...paths], protos };
 }
@@ -117,6 +119,10 @@ function relinkFiles(p, moved, root) {
   if (!origs.length) return;
   const dir = (d) => (root && origs.some((o) => relPath(d, o) !== o) ? restoredPathFor(root, d) : d);
   for (const e of p.envs) for (const k of ['caFile', 'certFile', 'keyFile', 'pfxFile']) if (moved[e.network?.[k]]) e.network[k] = moved[e.network[k]];
+  for (const r of allRequests(p)) {
+    if (moved[r.body?.file]) r.body.file = moved[r.body.file];
+    for (const x of r.body?.form || []) if (x.file && moved[x.v]) x.v = moved[x.v];
+  }
   for (const r of allRequests(p)) if (r.grpc) {
     if (moved[r.grpc.protoFile]) r.grpc.protoFile = moved[r.grpc.protoFile];
     if (r.grpc.includeDirs) r.grpc.includeDirs = r.grpc.includeDirs.split(',').map((d) => d.trim()).filter(Boolean).map(dir).join(', ');

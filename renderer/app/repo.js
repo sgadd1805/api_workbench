@@ -5,7 +5,7 @@
 // Secrets stay out of the files: literal bearer tokens / passwords and secret variable values are
 // left empty; use {{variables}} for them.
 import { notify } from '../shared/notify.js';
-import { joinPath, relPath, isAbsPath } from '../shared/paths.js';
+import { joinPath, relPath, isAbsPath, isInsideRel } from '../shared/paths.js';
 import { DB, normalizeRequest, findReq, addEnv } from './store.js';
 
 export const DEFAULT_DIR = 'api-requests';
@@ -38,11 +38,17 @@ function cleanAuth(auth) {
 const relTo = relPath;
 const absFrom = (base, file) => (base && file ? joinPath(base, file) : file);
 
+// Body file paths (multipart file parts, a binary body) relative to the code folder, like .proto files.
+const mapBodyFiles = (body, fn) => {
+  if (!body || (!body.file && !body.form?.some((x) => x.file))) return body;
+  return { ...body, ...(body.file && { file: fn(body.file) }), form: (body.form || []).map((x) => (x.file ? { ...x, v: fn(x.v) } : x)) };
+};
+
 function requestData(p, f, r, order) {
   const data = {
     id: r.id, name: r.name, ...(r.kind && { kind: r.kind }), method: r.method, url: r.url,
     folder: f?.id || null, order,
-    headers: r.headers, body: r.body, auth: cleanAuth(r.auth),
+    headers: r.headers, body: mapBodyFiles(r.body, (x) => relTo(p.codeFolder, x)), auth: cleanAuth(r.auth),
     assertions: r.assertions.filter((a) => a.trim()), extract: r.chain, scripts: r.scripts, options: r.options,
   };
   if (r.spec) data.spec = r.spec;
@@ -99,9 +105,12 @@ export function fromRepo(p, { project, requests }) {
     seen.add(data.id);
     const existing = findReq(data.id);
     const local = existing?.p === p ? existing.r : null;
+    // A file path from the repo must stay inside the code folder; an absolute one only when this request already has it.
+    const known = new Set([local?.body?.file, ...(local?.body?.form || []).filter((x) => x.file).map((x) => x.v)].filter(Boolean));
+    const fileIn = (x) => (isInsideRel(x) ? absFrom(p.codeFolder, x) : known.has(x) ? x : (stats.filesDropped = (stats.filesDropped || 0) + 1, ''));
     const r = normalizeRequest({
       ...(local || {}), id: data.id, name: data.name, method: data.method || 'GET', url: data.url || '',
-      headers: data.headers || [], body: data.body, assertions: data.assertions || [], chain: data.extract || [], scripts: data.scripts, options: data.options,
+      headers: data.headers || [], body: mapBodyFiles(data.body, fileIn), assertions: data.assertions || [], chain: data.extract || [], scripts: data.scripts, options: data.options,
       spec: data.spec || null, auth: data.auth || { type: 'inherit' },
     });
     for (const k of ['kind', 'graphql', 'ws', 'snapshot']) if (data[k]) r[k] = data[k]; else delete r[k];
@@ -155,6 +164,7 @@ export async function loadFromRepo(p) {
   if (!res.ok) { notify(res.error, 'error'); return null; }
   if (res.errors.length) notify(`Skipped ${res.errors.length} unreadable file(s): ${res.errors[0]}`, 'error', 8000);
   const stats = fromRepo(p, res);
+  if (stats.filesDropped) notify(`${stats.filesDropped} body file path(s) in the request files were left out: they must be inside the code folder (relative, without "..")`, 'error', 8000);
   lastWritten.set(p.id, JSON.stringify(toRepo(p)));
   return stats;
 }

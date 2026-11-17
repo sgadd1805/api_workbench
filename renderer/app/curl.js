@@ -39,17 +39,30 @@ const CURL_VALUE_OPTS = new Set(['-o', '--output', '-m', '--max-time', '--connec
   '--resolve', '--interface', '--limit-rate', '-K', '--config', '-U', '--proxy-user', '-z', '--time-cond', '--max-redirs']);
 const DATA_OPTS = new Set(['-d', '--data', '--data-raw', '--data-binary', '--data-ascii']);
 
+// One -F value → a multipart row: name=value, name=@file[;type=…][;filename=…], or name=<file (also sent as a file part).
+function formPart(spec) {
+  const ix = spec.indexOf('=');
+  const k = ix < 0 ? spec : spec.slice(0, ix), v = ix < 0 ? '' : spec.slice(ix + 1);
+  if (!/^[@<]/.test(v)) return { k, v, on: true };
+  const [file, ...attrs] = v.slice(1).split(';');
+  const type = attrs.map((a) => /^\s*type=(.+)$/i.exec(a)?.[1]).find(Boolean);
+  return { k, v: file.replace(/^"(.*)"$/, '$1'), on: true, file: true, ...(type && { type: type.trim() }) };
+}
+
 // Returns the request fields (no id); the caller merges them into newReq().
 export function parseCurl(cmd) {
   const t = tokenize(cmd.trim());
   const req = { name: 'Imported', method: '', url: '', headers: [], body: { type: 'none', text: '' }, auth: { type: 'inherit' }, assertions: [] };
-  const data = []; let getMode = false;
+  const data = [], parts = []; let getMode = false, upload = '';
   const header = (k, v) => req.headers.push({ k, v, on: true });
   const next = (i) => t[i] || '';
   for (let i = 0; i < t.length; i++) {
     const a = t[i];
     if (i === 0 && a === 'curl') continue;
-    if (a === '-X' || a === '--request') req.method = next(++i).toUpperCase();
+    if (a === '-F' || a === '--form') parts.push(formPart(next(++i)));
+    else if (a === '--form-string') { const v = next(++i), ix = v.indexOf('='); parts.push({ k: ix < 0 ? v : v.slice(0, ix), v: ix < 0 ? '' : v.slice(ix + 1), on: true }); }
+    else if (a === '-T' || a === '--upload-file') upload = next(++i);
+    else if (a === '-X' || a === '--request') req.method = next(++i).toUpperCase();
     else if (/^-X\w+$/.test(a)) req.method = a.slice(2).toUpperCase();
     else if (a === '-H' || a === '--header') {
       const h = next(++i); const ix = h.indexOf(':');
@@ -73,7 +86,17 @@ export function parseCurl(cmd) {
   }
   // curl joins repeated -d values with '&'; -G moves them into the query string instead.
   const text = data.join('&');
-  if (getMode && text) req.url += (req.url.includes('?') ? '&' : '?') + text;
+  // -F parts → a multipart body; -T file or a single --data-binary @file → that file as the body.
+  const dataFile = data.length === 1 && data[0].startsWith('@') ? data[0].slice(1) : '';
+  if (parts.length) {
+    req.body = { type: 'multipart', text: '', form: parts };
+    // The boundary in a copied multipart Content-Type belongs to that other body; the app sets its own.
+    req.headers = req.headers.filter((h) => !(/^content-type$/i.test(h.k) && /^multipart\//i.test(h.v)));
+    if (!req.method) req.method = 'POST';
+  } else if (upload || (dataFile && !getMode)) {
+    req.body = { type: 'binary', text: '', form: [], file: upload || dataFile };
+    if (!req.method) req.method = upload ? 'PUT' : 'POST';
+  } else if (getMode && text) req.url += (req.url.includes('?') ? '&' : '?') + text;
   else if (data.length) {
     req.body = { type: 'raw', text };
     // curl sends -d data as a form unless told otherwise; fetch would default to text/plain.
@@ -90,7 +113,16 @@ export function toCurl(req) {
   let s = `curl -X ${req.method} ${q(req.url)}`;
   if (req.redirect === 'follow') s += ' -L';
   if (req.timeoutMs) s += ` --max-time ${req.timeoutMs / 1000}`;
-  for (const [k, v] of Object.entries(req.headers)) s += ` \\\n  -H ${q(k + ': ' + v)}`;
-  if (req.body) s += ` \\\n  --data-raw ${q(req.body)}`;
+  // curl writes the multipart Content-Type itself (with its own boundary).
+  const skip = (k, v) => req.bodyParts?.length && /^content-type$/i.test(k) && /^multipart\//i.test(v);
+  for (const [k, v] of Object.entries(req.headers)) if (!skip(k, v)) s += ` \\\n  -H ${q(k + ': ' + v)}`;
+  if (req.bodyParts?.length) {
+    for (const p of req.bodyParts) {
+      s += p.file != null
+        ? ` \\\n  -F ${q(`${p.name}=@${p.file}${p.contentType ? `;type=${p.contentType}` : ''}`)}`
+        : ` \\\n  --form-string ${q(`${p.name}=${p.value ?? ''}`)}`;
+    }
+  } else if (req.bodyFile) s += ` \\\n  --data-binary ${q('@' + req.bodyFile)}`;
+  else if (req.body) s += ` \\\n  --data-raw ${q(req.body)}`;
   return s;
 }

@@ -36,10 +36,17 @@ function trimForDisk(entry, secrets = knownSecrets()) {
   const clean = (s) => (typeof s === 'string' && s ? redactText(s, secrets) : s);
   const req = cut(clean(entry.request?.body));
   const res = entry.response && cut(clean(entry.response.body));
+  // Multipart text parts are cleaned as "name=value" pairs, so a secret-named field is caught like a form field.
+  const cleanPart = (p) => {
+    if (p.file != null || typeof p.value !== 'string') return p;
+    const pair = clean(`${p.name}=${p.value}`), prefix = `${p.name}=`;
+    return { ...p, value: pair.startsWith(prefix) ? cut(pair.slice(prefix.length)).text : '[REDACTED]' };
+  };
+  const parts = Array.isArray(entry.request?.parts) ? { parts: entry.request.parts.map(cleanPart) } : {};
   return {
     ...entry,
     url: clean(entry.url),
-    request: { ...entry.request, headers: redactHeaders(entry.request?.headers), body: req.text, ...(req.truncated && { truncated: true }) },
+    request: { ...entry.request, ...parts, headers: redactHeaders(entry.request?.headers), body: req.text, ...(req.truncated && { truncated: true }) },
     response: entry.response && { ...entry.response, headers: redactHeaders(entry.response.headers), body: res.text, ...(res.truncated && { truncated: true }) },
     redacted: true,
   };

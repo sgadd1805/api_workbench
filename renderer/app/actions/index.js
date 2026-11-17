@@ -21,6 +21,7 @@ import { networkActions } from './envs.js';
 import { taskActions } from './tasks.js';
 import { runnerActions } from './runner.js';
 import { loadActions } from './load.js';
+import { fuzzActions } from './fuzz.js';
 import { editorActions } from '../editor.js';
 import { specToolActions } from './spectools.js';
 import { proxyActions } from './proxy.js';
@@ -39,7 +40,7 @@ import { openReq, closeReqTab, newRequestTab } from './core.js';
 
 export const ACTIONS = {
   ...rowActions, ...sidebarActions, ...requestActions, ...responseActions, ...compareActions,
-  ...envActions, ...accountActions, ...ioActions, ...historyActions, ...specActions, ...searchActions, ...gitActions, ...terminalActions, ...currentActions, ...layoutActions, ...noteActions, ...tokenActions, ...networkActions, ...taskActions, ...runnerActions, ...loadActions, ...editorActions, ...specToolActions, ...proxyActions, ...protocolActions, ...repoActions, ...configActions, ...backupActions, ...mcpActions, ...logWindowActions, ...actuatorActions, ...logWatchActions, ...otelActions,
+  ...envActions, ...accountActions, ...ioActions, ...historyActions, ...specActions, ...searchActions, ...gitActions, ...terminalActions, ...currentActions, ...layoutActions, ...noteActions, ...tokenActions, ...networkActions, ...taskActions, ...runnerActions, ...loadActions, ...fuzzActions, ...editorActions, ...specToolActions, ...proxyActions, ...protocolActions, ...repoActions, ...configActions, ...backupActions, ...mcpActions, ...logWindowActions, ...actuatorActions, ...logWatchActions, ...otelActions,
   // ---- request tab bar (views/tabs.js)
   'switch-tab'(d) { openReq(d.id); },
   'close-tab'(d) { closeReqTab(d.id); },
@@ -59,6 +60,7 @@ export { onTokenSourceInput, onTokenSourceChange } from './tokens.js';
 export { onTaskInput, onTaskChange, waitForTasks } from './tasks.js';
 export { onRunnerInput, onRunnerChange } from './runner.js';
 export { onLoadInput } from './load.js';
+export { onFuzzInput, onFuzzChange } from './fuzz.js';
 export { setEncryption, loadSecretsStatus } from './layout.js';
 export { applyAppearance, applyAiSetting, wireLayoutDrag, onSettingsInput, onSettingsChange, openSide, sendToTool, showShortcuts } from './layout.js';
 export { onRowInput } from './rows.js';

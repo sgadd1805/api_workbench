@@ -91,6 +91,7 @@ export function settingItems(actions, { render = renderAll } = {}) {
   page('API specs', act('open-specs'), 'openapi swagger');
   page('Collection runner', act('open-runner'), 'run tests junit');
   page('Load test', act('open-load'), 'performance');
+  page('Fuzz from spec', act('open-fuzz'), 'openapi invalid input edge cases negative testing security');
   page('Tasks & logs', act('open-tasks'), 'services java spring');
   page('Flagged log lines', act('open-log-watch'), 'log watch errors');
   page('Intercepting proxy', act('open-proxy'), 'capture');

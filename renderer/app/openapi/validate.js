@@ -95,7 +95,7 @@ export function validateRequest(analysis, op, wire, pathParams) {
 
 function validateRequestBody(root, op, wire) {
   const issues = [], rb = op.requestBody;
-  const hasBody = !!wire.body;
+  const hasBody = !!(wire.body || wire.bodyParts?.length || wire.bodyFile);
   if (!rb) return hasBody ? [{ level: 'warning', where: 'body', message: 'is sent but the operation takes no request body' }] : [];
   if (!hasBody) return rb.required ? [{ level: 'error', where: 'body', message: 'is required' }] : [];
   const ct = headerGet(wire.headers, 'content-type') || '';
@@ -104,7 +104,15 @@ function validateRequestBody(root, op, wire) {
     return [{ level: 'error', where: 'header.Content-Type', message: `${ct ? `"${mediaBase(ct)}"` : '(none)'} is not accepted; expected ${Object.keys(rb.content).join(', ') || 'no body'}` }];
   }
   let value;
-  if (isJsonMedia(mediaBase(ct) || media.mediaType)) {
+  if (wire.bodyFile) return issues; // a file as the body: only the content type is checked
+  if (/^multipart\/form-data/i.test(media.mediaType) && wire.bodyParts) {
+    // Text parts are typed like form fields; a file part stands in as a string (format: binary).
+    const props = deref(root, media.schema)?.properties || {};
+    const grouped = new Map();
+    for (const part of wire.bodyParts) { if (!grouped.has(part.name)) grouped.set(part.name, []); grouped.get(part.name).push(part.file != null ? `(file ${part.filename || ''})` : String(part.value ?? '')); }
+    value = {};
+    for (const [k, vs] of grouped) value[k] = coerceParam(root, { schema: props[k] || {}, style: 'form', explode: true }, vs);
+  } else if (isJsonMedia(mediaBase(ct) || media.mediaType)) {
     try { value = JSON.parse(wire.body); } catch (e) { return [{ level: 'error', where: 'body', message: `is not valid JSON (${e.message})` }]; }
   } else if (/x-www-form-urlencoded/.test(media.mediaType)) {
     const props = deref(root, media.schema)?.properties || {};

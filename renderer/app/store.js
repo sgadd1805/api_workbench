@@ -21,7 +21,10 @@
 //            (spec documents themselves are stored by main/specs.js; see openapi/registry.js)
 // Request: { id, name, method, url, headers: [Row],
 //            captured?: { status, statusText, body, truncated?, at } (what the login window got, for "vs captured"; capture.js),
-//            body: { type: 'none' | 'raw' | 'json' | 'form', text, form: [Row] },
+//            body: { type: 'none' | 'raw' | 'json' | 'form' | 'multipart' | 'binary', text, form: [Row],
+//                    file?: path of the file sent as the body (binary) },
+//                    (multipart rows: { k, v, on, file?: true → v is a file path, type?: its Content-Type };
+//                     file paths are absolute, or relative to the project's code folder; main/http.js reads them when sending)
 //            auth: { type: 'inherit' | 'none' | 'bearer' | 'basic' | 'token', token?, user?, pass?, sourceId? (tokens.js) },
 //            assertions: [string],
 //            chain: [Row]  (k = response path, v = target: 'bearer' or a variable name),
@@ -49,7 +52,7 @@ export const AI_PROMPT_DEFAULTS = {
 export const DB = { projects: [], features: [], notes: [], tokenSources: [], settings: { sidebarWidth: 240, openTabs: [], activeTab: null } };
 
 export const S = {
-  page: 'request', // 'request' | 'compare' | 'envs' | 'accounts' | 'history' | 'specs' | 'settings' | 'tokens' | 'tasks' | 'runner' | 'load' | 'proxy' | 'actuator'
+  page: 'request', // 'request' | 'compare' | 'envs' | 'accounts' | 'history' | 'specs' | 'settings' | 'tokens' | 'tasks' | 'runner' | 'load' | 'proxy' | 'actuator' | 'fuzz'
   projectId: null, folderOpen: {}, projectOpen: {},
   req: null,       // the active tab's request
   tabs: [],        // open request tabs, in tab-bar order: [Tab] (see newTab)
@@ -65,8 +68,12 @@ export const S = {
   proxy: { mocks: {}, running: false, port: 8899, lan: [], decryptHttps: false, allowLan: false, insecureUpstream: false, toHistory: true, breakpoints: '', filter: '', exchanges: [], selected: null, paused: [], ca: null }, // Proxy page (actions/proxy.js)
   specTools: { drift: null, diff: null, mock: {}, mockOpen: null }, // Specs page extras (actions/spectools.js)
   respView: { mode: 'pretty', filter: '', search: '', wrap: true, full: false }, // response body viewer options (views/viewer.js)
-  runner: { scopeKey: '', envId: null, iterations: 1, delayMs: 0, stopOnFailure: false, rows: null, dataName: '', running: false, stop: false, results: [], label: '' }, // Tasks page: selected task / log source and log view // Token sources page: source being edited, last Test result // Notes side tab: open note, Markdown preview, list scope
-  history: { id: null, filter: '', resTab: 'body' }, // History panel: entry open on the 'history' page, search text
+  runner: { scopeKey: '', envId: null, iterations: 1, delayMs: 0, stopOnFailure: false, rows: null, dataName: '', running: false, stop: false, results: [], label: '',
+    breakpoints: new Set(), stepMode: false, pauseNext: false, paused: null, overrides: {}, at: null }, // breakpoints: request ids to pause before; paused: the step waiting (actions/runner.js) // Tasks page: selected task / log source and log view // Token sources page: source being edited, last Test result // Notes side tab: open note, Markdown preview, list scope
+  fuzz: { scopeKey: '', envId: null, oversized: true, includeDelete: false, maxPerOp: 60, delayMs: 0, running: false, stop: false,
+    results: [], skipped: [], selected: null, open: {}, onlyProblems: true, progress: { done: 0, total: 0 } }, // Fuzz page (actions/fuzz.js)
+  history: { id: null, filter: '', resTab: 'body', // History panel: entry open on the 'history' page, search text
+    replay: { kind: 'header', name: '', value: '', remove: false, envId: '', running: false, result: null, open: [] } }, // "Send again with one change" (replay.js)
   search: { open: false, query: '', results: [], selected: 0 }, // API search palette (search.js)
   envId: null,          // environment open on the envs page
   accounts: null,       // accounts page draft (loaded from main)

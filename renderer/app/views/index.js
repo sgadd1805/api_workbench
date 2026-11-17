@@ -11,6 +11,7 @@ import { tokensPageHtml } from './tokens.js';
 import { tasksPageHtml } from './tasks.js';
 import { runnerPageHtml } from './runner.js';
 import { loadPageHtml } from './load.js';
+import { fuzzPageHtml } from './fuzz.js';
 import { terminalState } from '../terminal.js';
 
 const terminalOpen = () => terminalState.open;
@@ -32,7 +33,7 @@ export { refreshSideSpecSoon, registerStatusItem, toolsFrameReady, toolsFrameWin
 export { refreshTabBody, jsonStatus } from './request.js';
 export { renderHistoryList, historyResponse } from './history.js';
 
-const PAGES = { envs: envsPageHtml, accounts: accountsPageHtml, history: historyPageHtml, specs: specsPageHtml, settings: settingsPageHtml, tokens: tokensPageHtml, tasks: tasksPageHtml, runner: runnerPageHtml, load: loadPageHtml, proxy: proxyPageHtml, actuator: actuatorPageHtml };
+const PAGES = { envs: envsPageHtml, accounts: accountsPageHtml, history: historyPageHtml, specs: specsPageHtml, settings: settingsPageHtml, tokens: tokensPageHtml, tasks: tasksPageHtml, runner: runnerPageHtml, load: loadPageHtml, fuzz: fuzzPageHtml, proxy: proxyPageHtml, actuator: actuatorPageHtml };
 
 export function renderTopbar() {
   const p = currentProject(), l = DB.settings.layout;

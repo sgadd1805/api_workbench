@@ -79,6 +79,10 @@ guide's feature map lists which key covers which feature.
 - **History** (sidebar → History): every send, searchable. Proxy-captured traffic appears here too.
   - An entry shows what was sent and what came back. You can reopen it, save it as a request, or
     copy it as cURL.
+  - **Send again with one change:** re-send an entry with one header, query parameter or body field
+    (JSON path, form field or multipart part) set or removed, or against another environment, and
+    compare the two responses: status, time, changed headers, changed JSON fields and a body diff.
+    Credentials History blanked are filled from the request as it is now. Re-sends are marked ↻.
   - On disk, credentials are removed:
     - credential headers;
     - passwords, tokens and API keys in URLs and bodies (secret-named JSON, form and query fields,
@@ -125,9 +129,14 @@ guide's feature map lists which key covers which feature.
   - *“3. POST /orders: extract order.id”*, a script's `vars.set()`, a capture, or an edit.
   - Shown under each environment (Environments page) and for all of them from ⌘K "Variable history".
   - Kept on this computer. Values of secret and credential-looking variables are never kept.
+- **Bodies:** besides raw, JSON and URL-encoded form:
+  - **multipart (form-data):** text parts and file parts, each with an optional content type;
+  - **file:** a file sent as the raw body, its Content-Type guessed from the extension.
+  - File paths inside the project's code folder are stored relative to it, so they work from a clone.
+  - cURL import and export (`-F`, `--form-string`, `--data-binary @file`) and Code ▾ handle both.
 - **Code ▾** (next to cURL) copies the request as JavaScript fetch or axios, Python requests, Java
   (Spring RestClient or java.net.http) or C# HttpClient, with variables resolved.
-- **Editor tabs:** Params, Headers, Body (raw / JSON / form), Auth (inherit / none / bearer / basic /
+- **Editor tabs:** Params, Headers, Body (raw / JSON / form / multipart / file), Auth (inherit / none / bearer / basic /
   token source), and More:
   - Extract rules;
   - Assertions;
@@ -232,11 +241,28 @@ Choose the protocol in the method dropdown.
     one per call with `X-Mock-Status` / `?__status=`.
   - Latency is adjustable.
   - *Use as "mock" environment* points `{{baseUrl}}` at it.
+  - **Stateful:** a POST stores its body (with an id) and later GET, PUT, PATCH and DELETE on
+    `…/{id}` read, replace, merge and remove it; the collection lists what's stored. *Reset data*
+    clears it.
+  - **Faults**, for testing retries and timeouts: fail a percentage of requests (500, 502, 503, 504,
+    429, a dropped connection or no answer), fail the first N calls to each endpoint then succeed,
+    and add random or occasional extra latency.
+- **Fuzz from spec** (⌘K, a spec card, or a request's or folder's menu): sends each request as saved,
+  then once per case with one thing made invalid or unusual: missing required fields, wrong types,
+  values just past a limit, oversized and odd strings, malformed JSON, no or bad credentials.
+  - Flags 5xx responses, invalid input that was accepted, operations that work without credentials,
+    and responses that don't match the spec.
+  - Nothing is kept: no History, cookies, extract rules or variables. DELETE requests are skipped
+    unless you include them. Use a test environment.
+  - Any case can be copied as cURL or saved as a request.
 
 ### Running and testing
 - **Collection runner** (Project → Run collection, or ▶ on a folder or feature):
   - runs in order, with iterations or **CSV data rows** as variables;
   - delay between requests, and stop on first failure;
+  - **breakpoints** (the dot beside a step), *Pause*, and *Step* mode: a paused run shows the next
+    request and the variables, which you can edit before *Continue*, *Skip* or *Stop*. Request
+    edits apply to that send only unless you tick *Save to the request*;
   - `setNextRequest` flows;
   - pass/fail from assertions, script tests, spec errors and HTTP status;
   - export as JSON or **JUnit XML**;
@@ -555,10 +581,10 @@ main.js                 App lifecycle; registers each main/*.js module's IPC han
 main/
   windows.js            Main + Tools windows, navigation lock-down
   storage.js, secrets.js db.json in userData (mode 600); which values are secrets (redaction, exports)
-  http.js, network.js   Request transport, phase timing, binary bodies; TLS / client certs / proxy / HTTP/2
+  http.js, network.js   Request transport, phase timing, binary, multipart and file bodies; TLS / client certs / proxy / HTTP/2
   protocols.js          WebSocket (ws), Server-Sent Events, gRPC (@grpc/grpc-js + proto-loader)
   proxy.js, proxyca.js  Intercepting proxy; local CA + leaf certificates (node-forge)
-  mock.js               Mock server from a spec's route table
+  mock.js               Mock server from a spec's route table; stateful store and faults
   load.js               Load test runner and statistics
   specs.js              Find / read / bundle / store OpenAPI documents (YAML via js-yaml)
   repofiles.js          Requests as YAML files in the repo (write / read / watch)
@@ -583,7 +609,7 @@ cli/
   report.mjs            Console progress, JUnit / JSON files, secrets redacted
 
 renderer/
-  shared/               html.js, json.js, highlight.js (syntax colouring), icons.js (SVG icon set), dynvars.js ({{$uuid}} …),
+  shared/               html.js, json.js, mime.js, highlight.js (syntax colouring), icons.js (SVG icon set), dynvars.js ({{$uuid}} …),
                         notesview.js, logview.js (shared by windows), diff.js, markdown.js, notify.js
   toolbar/              Session toolbar
   tools/                Tools (side panel / own window)
@@ -594,7 +620,8 @@ renderer/
     editor.js           Code editor + URL field variable highlighting and autocomplete
     jsonpath.js         Response filter
     scripts.js, script-worker.js   Pre / post scripts in a worker
-    runner.js           Collection runner, judging, JUnit
+    runner.js           Collection runner (with a beforeSend hook for breakpoints), judging, JUnit
+    replay.js           History "send again with one change" and response comparison
     verify.js           Assertions, snapshot and spec checks on a finished send (app and command line)
     tokens.js           Token sources, JWT inspection
     tasks.js            Task / log state in the renderer
@@ -603,7 +630,7 @@ renderer/
     snapshot.js, report.js, recorded.js, actuator.js, logwatch.js   Snapshot tests, bug reports, proxy → mock routes,
                         Actuator parsing, log watch rules
     undo.js, a11y.js    Undo for deletes; keyboard tree and accessible names
-    openapi/            spec analysis, schema checks, validation, examples, docs, drift, diff, mock routes
+    openapi/            spec analysis, schema checks, validation, examples, docs, drift, diff, mock routes, fuzz cases
     events.js           Event delegation (click → actions, input/change → fields)
     views/              One render module per region or page
     actions/            data-action handlers grouped by area
